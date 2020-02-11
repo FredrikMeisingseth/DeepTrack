@@ -40,10 +40,10 @@ def get_image_parameters_optimized():
 
     from math import pi, floor
 
-    particle_number = floor(uniform(10, 30))
+    particle_number = floor(uniform(2, 12))
     first_particle_range = 10
-    other_particle_range = 200
-    particle_distance = 30
+    other_particle_range = 50
+    particle_distance = 80
 
     (particles_center_x, particles_center_y) = deeptrack.particle_positions(particle_number, first_particle_range,
                                                                             other_particle_range, particle_distance)
@@ -51,7 +51,7 @@ def get_image_parameters_optimized():
 
     image_parameters['Particle Center X List'] = particles_center_x
     image_parameters['Particle Center Y List'] = particles_center_y
-    image_parameters['Particle Radius List'] = uniform(2, 5, particle_number)
+    image_parameters['Particle Radius List'] = uniform(0.5, 3, particle_number)
 
     mylist = []
     for i in range(particle_number):
@@ -65,15 +65,16 @@ def get_image_parameters_optimized():
 
     image_parameters['Particle Intensities List'] = mylist2
 
-    image_parameters['Image Half-Size'] = 256
+    image_parameters['Image Half-Size'] = 64
     image_parameters['Image Background Level'] = uniform(.3, .5)
-    image_parameters['Signal to Noise Ratio'] = uniform(3, 5)
+    image_parameters['Signal to Noise Ratio'] = uniform(1,10)
     image_parameters['Gradient Intensity'] = uniform(0.25, 0.75)
     image_parameters['Gradient Direction'] = uniform(-pi, pi)
     image_parameters['Ellipsoid Orientation'] = uniform(-pi, pi, particle_number)
     image_parameters['Ellipticity'] = 1
 
     return image_parameters
+
 
 def get_image_generator(image_parameters_function=lambda: get_image_parameters(), max_number_of_images=1e+9):
     """Generator of particle images.
