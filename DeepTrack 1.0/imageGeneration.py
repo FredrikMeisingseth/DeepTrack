@@ -61,13 +61,13 @@ def get_image_parameters_optimized():
 
     mylist2 = []
     for i in range(particle_number):
-        mylist2.append([uniform(0.5, 0.7, 1), ])
+        mylist2.append([uniform(0.1, 0.4, 1), ])
 
     image_parameters['Particle Intensities List'] = mylist2
 
     image_parameters['Image Half-Size'] = 64
     image_parameters['Image Background Level'] = uniform(.3, .5)
-    image_parameters['Signal to Noise Ratio'] = uniform(1,10)
+    image_parameters['Signal to Noise Ratio'] = uniform(2,10)
     image_parameters['Gradient Intensity'] = uniform(0.25, 0.75)
     image_parameters['Gradient Direction'] = uniform(-pi, pi)
     image_parameters['Ellipsoid Orientation'] = uniform(-pi, pi, particle_number)
@@ -107,6 +107,11 @@ def get_image_generator(image_parameters_function=lambda: get_image_parameters()
         image_parameters = image_parameters_function()
         image = dt.generate_image(image_parameters)
         target = get_target_binary_image(image_parameters)
+        image = get_image_with_padding(image,n=4)
+        target = get_image_with_padding(target, n=4)
+
+
+
 
         yield image_number, image, image_parameters, target
         image_number += 1
@@ -256,6 +261,12 @@ def save_image_and_target(image_number,image,image_parameters, image_path, targe
     target = get_target_binary_image(image_parameters)
     cv2.imwrite(target_path + "/" + str(image_number) + '.png', target*255)
 
+def save_image_and_target_2(image_number, image, image_paramters, target, image_path, target_path):
+    import cv2
+    cv2.imwrite(image_path + "/" + str(image_number) + '.png', image*255)
+    cv2.imwrite(target_path + "/" + str(image_number) + '.png', target*255)
+
+
 def adjustData(img,mask,flag_multi_class,num_class):
     import numpy as np
 
@@ -379,22 +390,49 @@ def get_padding(input_size, n):
     Outputs:
     padding: the padding that was used
     """
-    C0 = 2 ** (n - 1)
-    C1 = 2 ** (n - 1)
+    c0 = 2 ** (n - 1)
+    c1 = 2 ** (n - 1)
     if (input_size[0] % 8 != 0):
-        top_pad = (input_size[0] % (2 * n) // 2);
+        top_pad = (input_size[0] % (2 * n) // 2)
         bottom_pad = (input_size[0] % (2 * n) - top_pad)
     else:
-        top_pad = 0;
-        bottom_pad = 0;
-        C0 = 0
+        top_pad = 0
+        bottom_pad = 0
+        c0 = 0
     if input_size[1] % 8 != 0:
-        left_pad = (input_size[1] % (2 * n) // 2);
+        left_pad = (input_size[1] % (2 * n) // 2)
         right_pad = (input_size[1] % (2 * n) - left_pad)
     else:
-        left_pad = 0;
-        right_pad = 0;
-        C1 = 0
-    padding = ((C0 - top_pad, C0 - bottom_pad), (C1 - left_pad, C1 - right_pad))
+        left_pad = 0
+        right_pad = 0
+        c1 = 0
+    padding = ((c0 - top_pad, c0 - bottom_pad), (c1 - left_pad, c1 - right_pad))
 
     return (padding)
+
+def get_image_with_padding(image,n=4):
+    import numpy as np
+    padding = get_padding(image.shape, n)
+    image = np.pad(image,padding, mode = 'symmetric')
+    return(image)
+
+
+def batch_generator(image_parameters_function, batch_size, image_shape = (144,144)):
+    import numpy as np
+
+    while True:
+        # image_number, image, image_parameters, target = get_image_generator(image_parameters_function)
+        image_batch = np.zeros((batch_size,) + image_shape + (1,))
+        target_batch = np.zeros((batch_size,) + image_shape + (1,))
+
+        for image_number, image, image_parameters, target in get_image_generator(image_parameters_function):
+            if (image_number >= batch_size):
+                break
+            image_batch[image_number, :, :, 0] = image
+            target_batch[image_number, :, :, 0] = target
+        print("Am here")
+        yield image_batch, target_batch
+
+
+
+
