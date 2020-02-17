@@ -380,3 +380,26 @@ def get_padding(input_size, n):
     padding = ((C0 - top_pad, C0 - bottom_pad), (C1 - left_pad, C1 - right_pad))
 
     return (padding)
+
+def get_particle_centers(label):
+    from skimage import measure
+    from math import mean
+
+    x_list=[]
+    y_list=[]
+
+    label_is_particle = label[0,:,:]
+    label_centerpointer_x = label[1,:,:]
+    label_centerpointer_y = label[2,:,:]
+   
+    (label_labeled, number_of_particles) = measure.label(label_is_particle) #Hmmmmm names?
+    properties = measure.regionprops(label_labeled) #cachable for faster computing
+    coordinates = properties['coords']
+    
+    for i in range (number_of_particles):
+        (x, y) = coordinates(i)
+        x_list.append(x+label_centerpointer_x[x,y])
+        y_list.append(y+label_centerpointer_y[x,y])
+
+    center_x = mean(x_list)
+    center_y = mean(y_list)
