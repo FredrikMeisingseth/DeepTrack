@@ -67,12 +67,12 @@ def get_image_parameters_preconfig():
     from numpy.random import uniform, randint
     from math import pi
 
-    particle_number= randint(10, 30)
+    particle_number= randint(2, 5)
     first_particle_range = 10
     other_particle_range = 200
     particle_distance = 30
 
-    (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_number, 4)
+    (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_number, 4,image_size=128)
     particle_bessel_orders_list= []
     particle_intensities_list= []
     for i in range(particle_number):
@@ -82,10 +82,10 @@ def get_image_parameters_preconfig():
     image_parameters = get_image_parameters(
         particle_center_x_list= lambda : particle_center_x_list, 
         particle_center_y_list= lambda : particle_center_y_list, 
-        particle_radius_list=lambda : uniform(2, 5, particle_number), 
+        particle_radius_list=lambda : uniform(2, 3, particle_number),
         particle_bessel_orders_list= lambda:  particle_bessel_orders_list,
         particle_intensities_list= lambda : particle_intensities_list,
-        image_size=lambda : 128, 
+        image_size=lambda : 128,
         image_background_level=lambda : uniform(.3, .5),
         signal_to_noise_ratio=lambda : uniform(3, 5),
         gradient_intensity=lambda : uniform(0.25, 0.75), 
@@ -104,7 +104,7 @@ def get_aug_parameters():
     horizontal_flip=True,
     fill_mode='nearest')
 
-def get_particle_positions(particle_number=2,particle_distance=10,image_size = 128):
+def get_particle_positions(particle_number=2,particle_distance=10,image_size = 128, max_radius = 5):
     """Generates multiple particle x- and y-coordinates with respect to each other.
     
     Inputs:  
@@ -122,7 +122,7 @@ def get_particle_positions(particle_number=2,particle_distance=10,image_size = 1
     
     particle_centers=[]
     while len(particle_centers) < particle_number:
-        (x,y) = (uniform(0,image_size), uniform(0,image_size))
+        (x,y) = (uniform(max_radius,image_size-max_radius), uniform(max_radius,image_size-max_radius))
         if all(((x-coord[0])**2+(y-coord[1])**2)**0.5 > particle_distance for coord in particle_centers):
             particle_centers.append([x,y])
 
@@ -240,6 +240,54 @@ def get_image(image_parameters, use_gpu=False):
         return image_particles_with_noise
 
 def get_label(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
+    """Create and return binary target image given image parameters
+    Input: Image parameters
+    Output: Array of size (image_x, image_y, number_of_features = 5), where the features at index i are:
+        i = 0 - binary image (is there a particle here?)
+        i = 1 - delta_x (to the particle center)
+        i = 2 - delta_y
+        i = 3 - radius
+        i = 4 - intensity
+    """
+    if (use_gpu):
+        print('GPU not yet implemented')
+    else:
+        import numpy as np
+
+
+        particle_center_x_list = image_parameters['Particle Center X List']
+        particle_center_y_list = image_parameters['Particle Center Y List']
+        particle_radius_list = image_parameters['Particle Radius List']
+        image_size = image_parameters['Image Size']
+        particle_intensities_list = image_parameters['Particle Intensities List']
+
+        targetBinaryImage = np.zeros((image_size, image_size,5))
+
+        for particle_index in range(0, len(particle_center_x_list)):
+            center_x = particle_center_x_list[particle_index]
+            center_y = particle_center_y_list[particle_index]
+            radius = particle_radius_list[particle_index]
+            intensity = particle_intensities_list[particle_index]
+            #print('Center_x is: ' + str(center_x) + ". Center_y is: " + str(center_y) + ".")
+
+            """Loops over all pixels with center in coordinates = [ceil(center - radius): floor(center + radius)]. Adds the ones with
+            center within radius.
+            """
+            for pixel_x in range(int(np.floor(center_x - radius)), int(np.ceil(center_x + radius) + 1)):
+                for pixel_y in range(int(np.floor(center_y - radius)), int(np.ceil(center_y + radius) + 1)):
+                    if ((pixel_x - center_x) ** 2 + (pixel_y - center_y) ** 2 <= radius ** 2):
+                        #print('Pixel_x is: ' + str(pixel_x) + ". Pixel_y is: " + str(pixel_y) + ".")
+                        targetBinaryImage[pixel_x, pixel_y, 0] = 1
+                        targetBinaryImage[pixel_x, pixel_y, 1] = center_x - pixel_x
+                        targetBinaryImage[pixel_x, pixel_y, 2] = center_y - pixel_y
+                        #print('X vector is: ' + str(targetBinaryImage[pixel_x, pixel_y, 1]) + '. Y vector is: ' + str(targetBinaryImage[pixel_x, pixel_y, 2] ))
+                        targetBinaryImage[pixel_x, pixel_y, 3] = radius
+                        targetBinaryImage[pixel_x, pixel_y, 4] = intensity[0]
+
+
+        return targetBinaryImage
+
+def get_label_old(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
     """Create and return binary target image given image parameters
     Input: Image parameters
     Output: Binary image of the input image size where pixels containing particles are marked as ones, while rest are zeros
