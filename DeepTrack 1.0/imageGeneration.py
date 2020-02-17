@@ -383,23 +383,72 @@ def get_padding(input_size, n):
 
 def get_particle_centers(label):
     from skimage import measure
+    from statistics import mean
+    from numpy import argwhere
+   
+    (label_id, number_of_particles) = measure.label(label[0,:,:])
+    #Bra namn
+
+    x_mean_list=[]
+    y_mean_list=[]
+
+    for particle_id in range(number_of_particles):
+        x_list=[]
+        y_list=[]
+        coords = argwhere(label_id==particle_id)
+        for coord in coords:
+            x_list.append(coord[0]+label[1,coord[0],coord[1]])
+            y_list.append(coord[1]+label[2,coord[0],coord[1]])
+        
+        x_mean_list.append(mean(x_list))
+        y_mean_list.append(mean(y_list))
+
+    return (x_mean_list, y_mean_list)
+
+def get_particle_centers2(label):
+    from numpy import argwhere, zeros
+    from queue import Queue, put, get, empty
     from math import mean
 
-    x_list=[]
-    y_list=[]
+    pixel_list = argwhere(label[0,:,:]==1)
+    for pixel in pixel_list:
+        pixel.append(None)
 
-    label_is_particle = label[0,:,:]
-    label_centerpointer_x = label[1,:,:]
-    label_centerpointer_y = label[2,:,:]
-   
-    (label_labeled, number_of_particles) = measure.label(label_is_particle) #Hmmmmm names?
-    properties = measure.regionprops(label_labeled) #cachable for faster computing
-    coordinates = properties['coords']
-    
-    for i in range (number_of_particles):
-        (x, y) = coordinates(i)
-        x_list.append(x+label_centerpointer_x[x,y])
-        y_list.append(y+label_centerpointer_y[x,y])
+    particle_id=0
+    Q=Queue()
 
-    center_x = mean(x_list)
-    center_y = mean(y_list)
+    for  pixel in pixel_list:
+        if (pixel[2]==None):
+            Q.put(pixel)
+            while(not Q.empty()):
+                p = Q.get()
+                if p[2]==None:
+                    pixel[2]=particle_id
+                    #Some more calculation
+                    for neighbour_pixel in pixel_list[
+                                (pixel[0]-1 <= pixel_list[0] <= pixel[0]+1)  and
+                                (pixel[1]-1 <= pixel_list[1] <= pixel[1]+1)
+                                ]:
+                        Q.put(neighbour_pixel)
+            particle_id = particle_id+1
+
+
+    """
+    DFS on label, pseudo code
+
+    get list of (x,y) of pixels in a particle
+    init list of (particle_id, x_center, y_center)= list of (none,none,none), values means marked
+    init que
+
+    while (x,y)!=empty
+        if (x,y)!=marked, push to que
+            while que!=empty
+                if element in que=marked,
+                    remove, next
+                else 
+                    calculate (x_center, y_center) = (i,x,y)+(0,pointer_x,pointer_y)
+                    push neighbouring pixels to que
+        i++
+
+    return list of averages of (x_center, y_center) for each i
+    """
