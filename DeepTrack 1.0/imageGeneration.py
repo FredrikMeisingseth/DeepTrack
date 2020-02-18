@@ -67,12 +67,10 @@ def get_image_parameters_preconfig():
     from numpy.random import uniform, randint
     from math import pi
 
-    particle_number= randint(2, 5)
-    first_particle_range = 10
-    other_particle_range = 200
-    particle_distance = 30
+    particle_number= randint(20, 30)
 
-    (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_number, 4,image_size=128)
+    particle_radius_list = uniform(2, 3, particle_number)
+    (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list,image_size=128)
     particle_bessel_orders_list= []
     particle_intensities_list= []
     for i in range(particle_number):
@@ -82,7 +80,7 @@ def get_image_parameters_preconfig():
     image_parameters = get_image_parameters(
         particle_center_x_list= lambda : particle_center_x_list, 
         particle_center_y_list= lambda : particle_center_y_list, 
-        particle_radius_list=lambda : uniform(2, 3, particle_number),
+        particle_radius_list=lambda : particle_radius_list,
         particle_bessel_orders_list= lambda:  particle_bessel_orders_list,
         particle_intensities_list= lambda : particle_intensities_list,
         image_size=lambda : 128,
@@ -104,7 +102,7 @@ def get_aug_parameters():
     horizontal_flip=True,
     fill_mode='nearest')
 
-def get_particle_positions(particle_number=2,particle_distance=10,image_size = 128, max_radius = 5):
+def get_particle_positions(particle_radius_list = [], image_size = 128):
     """Generates multiple particle x- and y-coordinates with respect to each other.
     
     Inputs:  
@@ -119,11 +117,12 @@ def get_particle_positions(particle_number=2,particle_distance=10,image_size = 1
     """
 
     from numpy.random import uniform
-    
+    from numpy import reshape
+
     particle_centers=[]
-    while len(particle_centers) < particle_number:
-        (x,y) = (uniform(max_radius,image_size-max_radius), uniform(max_radius,image_size-max_radius))
-        if all(((x-coord[0])**2+(y-coord[1])**2)**0.5 > particle_distance for coord in particle_centers):
+    for radius in particle_radius_list:
+        (x,y) = (uniform(radius,image_size-radius), uniform(radius,image_size-radius))
+        if all(((x-coord[0])**2+(y-coord[1])**2)**0.5 > radius for coord in particle_centers):
             particle_centers.append([x,y])
 
     particle_centers_x=[]
@@ -132,7 +131,7 @@ def get_particle_positions(particle_number=2,particle_distance=10,image_size = 1
         particle_centers_x.append(coordinates[0])
         particle_centers_y.append(coordinates[1])
     
-    return (particle_centers_x, particle_centers_y)
+    return (particle_centers_x,particle_centers_y)
 
 def get_image(image_parameters, use_gpu=False):
     """Generate image with particles.
