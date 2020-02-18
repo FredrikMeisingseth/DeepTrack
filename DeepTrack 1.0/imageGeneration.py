@@ -172,10 +172,7 @@ def get_image(image_parameters, use_gpu=False):
     gradient_intensity = image_parameters['Gradient Intensity']
     gradient_direction = image_parameters['Gradient Direction']
     ellipsoidal_orientation_list = image_parameters['Ellipsoid Orientation']
-    ellipticity = image_parameters['Ellipticity']
-    
-
-    ### CALCULATE IMAGE PARAMETERS   
+    ellipticity = image_parameters['Ellipticity']   
     
     ### CALCULATE BACKGROUND
     # initialize the image at the background level
