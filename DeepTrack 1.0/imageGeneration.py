@@ -67,7 +67,7 @@ def get_image_parameters_preconfig():
     from numpy.random import uniform, randint
     from math import pi
 
-    particle_number= randint(20, 30)
+    particle_number= randint(2, 4)
 
     particle_radius_list = uniform(2, 3, particle_number)
     (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list,image_size=128)
@@ -426,3 +426,26 @@ def get_padding(input_size, n):
         C1 = 0
     padding = ((C0 - top_pad, C0 - bottom_pad), (C1 - left_pad, C1 - right_pad))
 
+def get_particle_centers(label):
+    from skimage import measure
+    from statistics import mean
+    from numpy import argwhere
+   
+    (label_id, number_of_particles) = measure.label(label[:,:,0], return_num=True)
+    #Bra namn
+
+    x_mean_list=[]
+    y_mean_list=[]
+
+    for particle_id in range(1,number_of_particles+1):
+        x_list=[]
+        y_list=[]
+        coords = argwhere(label_id==particle_id)
+        for coord in coords:
+            x_list.append(coord[0]+label[coord[0],coord[1],1])
+            y_list.append(coord[1]+label[coord[0],coord[1],2])
+        
+        x_mean_list.append(mean(x_list))
+        y_mean_list.append(mean(y_list))
+
+    return (x_mean_list, y_mean_list)
