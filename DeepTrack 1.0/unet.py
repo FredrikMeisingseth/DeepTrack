@@ -70,13 +70,20 @@ def create_unet(pretrained_weights=None, input_size=(None, None, 1)):
     merge9 = concatenate([conv1, up9], axis=3)
     conv9 = Conv2D(8, 3, activation='relu', padding='same', kernel_initializer='he_normal')(merge9)
     conv9 = Conv2D(8, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv9)
-    #conv9 = Conv2D(2, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv9)
-    #output = Conv2D(1, 1, activation='sigmoid')(conv9)
-    output = Conv2D(5,3, activation=None, padding = 'same')(conv9)
 
-    model = Model(input=input, output=output)
+    #conv9 = Conv2D(2, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(conv9)
+    #output = Conv2D(1, 1, activation = 'sigmoid')(conv9)
 
-    model.compile(optimizer=Adam(lr=1e-4), loss=loss, metrics=['accuracy'])
+    #conv9 = Conv2D(5, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv9)
+    output = Conv2D(5,1, activation=None, padding = 'same')(conv9)
+
+    model = Model(inputs=[input], outputs=[output])
+    model.compile(optimizer=Adam(lr=1e-4), loss=loss, metrics=[particle_loss,
+                                                               x_loss,
+                                                               y_loss,
+                                                               r_loss,
+                                                               i_loss,
+                                                               particle_binary_accuracy])
 
     if (pretrained_weights):
         model.load_weights(pretrained_weights)
@@ -92,14 +99,14 @@ def l1_loss(y_true, y_pred):
     error = K.abs(T-P)
     return(K.sum(error))
 
-def weighted_crossentropy(y_true,y_pred,beta):
+def weighted_crossentropy(y_true,y_pred,beta=30):
     """
     Assumes y_true and y_pred take on values between [0:1]
     """
     from keras import backend as K
     T = K.flatten(y_true)
     P = K.flatten(y_pred)
-    return -K.mean(beta*T*K.log(P+1e-3) + (1-T)*K.log(1-P+1e-3))
+    return -10*K.mean(beta*T*K.log(P+1e-3) + (1-T)*K.log(1-P+1e-3))
 
 def loss(y_true, y_pred):
     """
@@ -107,11 +114,11 @@ def loss(y_true, y_pred):
     """
     from keras import backend as K
     particle_true = K.flatten(y_true[:,:,:,0])
-
-    P = K.flatten(y_pred)
+    P = K.flatten(y_pred[:,:,:,0])
     particle_pred = 1/(1 + K.exp(P))
 
-    loss = weighted_crossentropy(particle_true, particle_pred, 10)
+
+    loss = weighted_crossentropy(particle_true, particle_pred)
 
     for feature_number in range(1, 5):
         feature_true = K.flatten(y_true[:,:,:,feature_number])
@@ -125,3 +132,70 @@ def loss(y_true, y_pred):
         loss += feature_loss
     return loss
 
+def particle_loss(y_true, y_pred):
+    from keras import backend as K
+    particle_true = K.flatten(y_true[:,:,:,0])
+    P = K.flatten(y_pred[:,:,:,0])
+    particle_pred = 1/(1 + K.exp(P))
+    return(weighted_crossentropy(particle_true, particle_pred))
+
+def feature_loss(y_true, y_pred, feature_number):
+    from keras import backend as K
+    particle_true = K.flatten(y_true[:, :, :, 0])
+    feature_true = K.flatten(y_true[:, :, :, feature_number])
+    feature_pred = K.flatten(y_pred[:, :, :, feature_number])
+    feature_error = K.abs(feature_true - feature_pred)
+    # Add the loss for each pixel which has particle_true = 1, discard those that have particle_true = 0
+    feature_loss = K.sum(particle_true * feature_error) / (K.sum(particle_true) + 1e-3)
+    return feature_loss
+
+def particle_binary_accuracy(y_true, y_pred):
+    from keras import backend as K
+    particle_true = K.flatten(y_true[:,:,:,0])
+    P = K.flatten(y_pred[:,:,:,0])
+    particle_pred = 1/(1 + K.exp(P))
+    return K.mean(K.equal(particle_true, K.round(particle_pred)))
+
+def x_loss(y_true, y_pred):
+    feature_number = 1
+    from keras import backend as K
+    particle_true = K.flatten(y_true[:, :, :, 0])
+    feature_true = K.flatten(y_true[:, :, :, feature_number])
+    feature_pred = K.flatten(y_pred[:, :, :, feature_number])
+    feature_error = K.abs(feature_true - feature_pred)
+    # Add the loss for each pixel which has particle_true = 1, discard those that have particle_true = 0
+    feature_loss = K.sum(particle_true * feature_error) / (K.sum(particle_true) + 1e-3)
+    return feature_loss
+
+def y_loss(y_true, y_pred):
+    feature_number = 2
+    from keras import backend as K
+    particle_true = K.flatten(y_true[:, :, :, 0])
+    feature_true = K.flatten(y_true[:, :, :, feature_number])
+    feature_pred = K.flatten(y_pred[:, :, :, feature_number])
+    feature_error = K.abs(feature_true - feature_pred)
+    # Add the loss for each pixel which has particle_true = 1, discard those that have particle_true = 0
+    feature_loss = K.sum(particle_true * feature_error) / (K.sum(particle_true) + 1e-3)
+    return feature_loss
+
+def r_loss(y_true, y_pred):
+    feature_number = 3
+    from keras import backend as K
+    particle_true = K.flatten(y_true[:, :, :, 0])
+    feature_true = K.flatten(y_true[:, :, :, feature_number])
+    feature_pred = K.flatten(y_pred[:, :, :, feature_number])
+    feature_error = K.abs(feature_true - feature_pred)
+    # Add the loss for each pixel which has particle_true = 1, discard those that have particle_true = 0
+    feature_loss = K.sum(particle_true * feature_error) / (K.sum(particle_true) + 1e-3)
+    return feature_loss
+
+def i_loss(y_true, y_pred):
+    feature_number = 2
+    from keras import backend as K
+    particle_true = K.flatten(y_true[:, :, :, 0])
+    feature_true = K.flatten(y_true[:, :, :, feature_number])
+    feature_pred = K.flatten(y_pred[:, :, :, feature_number])
+    feature_error = K.abs(feature_true - feature_pred)
+    # Add the loss for each pixel which has particle_true = 1, discard those that have particle_true = 0
+    feature_loss = K.sum(particle_true * feature_error) / (K.sum(particle_true) + 1e-3)
+    return feature_loss
