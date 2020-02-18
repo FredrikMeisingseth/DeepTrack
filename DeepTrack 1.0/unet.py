@@ -1,5 +1,21 @@
 def create_unet(pretrained_weights=None, input_size=(None, None, 1)):
-    """Creates a unet
+    """Creates a unet that takes inputs of shape (px, px, 1) and outputs of shape (px, px, 5). The output features are:
+    1)  Binary, is there a particle here?
+    2)  X_vector to center of particle
+    3)  Y_vector to center of particle
+    4)  Particle radius
+    5)  Particle intensity
+
+    The loss function is calculated in the following way:
+    1)  Binary crossentropy on the first feature.
+    2)  For each pixel, if the first feature label is 1 (there is a particle here), then calculate the L1 loss for the
+        remaining features.
+
+    The inputs to the network are images with values within [0:255], the outputs (and labels) are:
+    1)      [0:1]
+    2-4)    Can take on any values ([0:image_size/2])
+    5)      [0:1]
+
     Inputs:
     pretrained_weights: if not None, loads the pretrained weights into the network
     input_size: the size of the input image (px,px,color channels)
@@ -60,9 +76,52 @@ def create_unet(pretrained_weights=None, input_size=(None, None, 1)):
 
     model = Model(input=input, output=output)
 
-    model.compile(optimizer=Adam(lr=1e-4), loss="binary_crossentropy", metrics=['accuracy'])
+    model.compile(optimizer=Adam(lr=1e-4), loss=loss, metrics=['accuracy'])
 
     if (pretrained_weights):
         model.load_weights(pretrained_weights)
 
     return model
+
+def l1_loss(y_true, y_pred):
+    from keras import backend as K
+
+    T = K.flatten(y_true)
+    P = K.flatten(y_pred)
+
+    error = K.abs(T-P)
+    return(K.sum(error))
+
+def weighted_crossentropy(y_true,y_pred,beta):
+    """
+    Assumes y_true and y_pred take on values between [0:1]
+    """
+    from keras import backend as K
+    T = K.flatten(y_true)
+    P = K.flatten(y_pred)
+    return -K.mean(beta*T*K.log(P+1e-3) + (1-T)*K.log(1-P+1e-3))
+
+def loss(y_true, y_pred):
+    """
+    Assumes y_true = [0:1], y_pred is a logit (can take any value)
+    """
+    from keras import backend as K
+    particle_true = K.flatten(y_true[:,:,:,0])
+
+    P = K.flatten(y_pred)
+    particle_pred = 1/(1 + K.exp(P))
+
+    loss = weighted_crossentropy(particle_true, particle_pred, 10)
+
+    for feature_number in range(1, 5):
+        feature_true = K.flatten(y_true[:,:,:,feature_number])
+        feature_pred = K.flatten(y_pred[:,:,:,feature_number])
+
+        feature_error = K.abs(feature_true - feature_pred)
+
+        #Add the loss for each pixel which has particle_true = 1, discard those that have particle_true = 0
+        feature_loss = K.sum(particle_true * feature_error)/(K.sum(particle_true) + 1e-3)
+
+        loss += feature_loss
+    return loss
+
