@@ -1,3 +1,6 @@
+import keras
+
+
 def get_image_parameters(
     particle_center_x_list=lambda : [0, ], 
     particle_center_y_list=lambda : [0, ], 
@@ -381,17 +384,18 @@ def get_batch(get_image_parameters = lambda: get_image_parameters_preconfig(),
 
     example_image_parameters = get_image_parameters()
     image_size = example_image_parameters['Image Size']
-    image_batch = zeros((batch_size, image_size, image_size)) #possibly save in smaller format? + Preallocating assumes equal image-sizes!
-    label_batch = zeros((batch_size, image_size, image_size)) #possibly save in smaller format? + Preallocating assumes equal image-sizes!
+    image_batch = zeros((batch_size, image_size, image_size,1)) #possibly save in smaller format? + Preallocating assumes equal image-sizes!
+    label_batch = zeros((batch_size, image_size, image_size,5)) #possibly save in smaller format? + Preallocating assumes equal image-sizes!
 
     t = time.time()
     for i in range(batch_size):
         image_parameters = get_image_parameters()
-        image_batch[i] = get_image(image_parameters, use_gpu)
-        label_batch[i] = get_image(image_parameters, use_gpu) #WRONG!!! Only since get_label isn't working right now
+        image_batch[i,:,:,0] = get_image(image_parameters, use_gpu)
+        label_batch[i,:,:,0:5] = get_label(image_parameters, use_gpu) #WRONG!!! Only since get_label isn't working right now
 
     timetaken=time.time()-t
     print("Time to create batch:",timetaken, "seconds.")
+
 
     return (image_batch, label_batch)
 
@@ -480,3 +484,30 @@ def get_padding(input_size, n):
         padding = ((C0 - top_pad, C0 - bottom_pad), (C1 - left_pad, C1 - right_pad))
 
     return (padding)
+
+class DataGenerator(keras.utils.Sequence):
+    """
+    len is the number of steps per epoch (how many times it trains on the same batch)
+    """
+    def __init__(self,
+                 get_image_parameters = lambda: get_image_parameters_preconfig(),
+                 batch_size = 32,
+                 use_GPU = False,
+                 len = 100):
+        'Initialization'
+        self.get_image_parameters = get_image_parameters
+        self.batch_size = batch_size
+        self.use_GPU = use_GPU
+        self.batch = get_batch(get_image_parameters, batch_size, use_GPU)
+        self.on_epoch_end()
+        self.len = len
+
+    def on_epoch_end(self):
+        self.batch = get_batch(self.get_image_parameters, self.batch_size, self.use_GPU)
+
+
+    def __len__(self):
+        return(self.len)
+
+    def __getitem__(self, index):
+        return self.batch
