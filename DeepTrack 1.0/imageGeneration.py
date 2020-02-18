@@ -390,7 +390,7 @@ def generator_for_training_load(image_path, label_path, aug_parameters = get_aug
         seed=seed)
 
     # combine generators into one which yields image and masks
-    return zip(image_generator, mask_generator)
+    return zip(image_generator, label_generator)
 
 def get_batch_load(filename):
     from skimage import io
