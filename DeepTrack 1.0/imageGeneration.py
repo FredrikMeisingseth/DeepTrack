@@ -65,30 +65,28 @@ def get_image_parameters(
 
     return image_parameters
 
-def get_image_parameters_preconfig():
+def get_image_parameters_preconfig(image_size = 256):
 
     from numpy.random import uniform, randint
     from math import pi
 
-    particle_number= randint(10, 30)
-    first_particle_range = 10
-    other_particle_range = 200
-    particle_distance = 30
+    particle_number= randint(20, 40)
+    particle_radius_list = uniform(1, 3, particle_number)
+    (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list,image_size)
 
-    (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_number, 4)
     particle_bessel_orders_list= []
     particle_intensities_list= []
     for i in range(particle_number):
         particle_bessel_orders_list.append([1,])
-        particle_intensities_list.append([uniform(0.5,0.7,1),])
+        particle_intensities_list.append([uniform(0.3,0.6,1),])
 
     image_parameters = get_image_parameters(
         particle_center_x_list= lambda : particle_center_x_list, 
-        particle_center_y_list= lambda : particle_center_y_list, 
-        particle_radius_list=lambda : uniform(2, 5, particle_number), 
+        particle_center_y_list= lambda : particle_center_y_list,
+        particle_radius_list=lambda : particle_radius_list,
         particle_bessel_orders_list= lambda:  particle_bessel_orders_list,
         particle_intensities_list= lambda : particle_intensities_list,
-        image_size=lambda : 128, 
+        image_size=lambda : image_size,
         image_background_level=lambda : uniform(.3, .5),
         signal_to_noise_ratio=lambda : uniform(3, 5),
         gradient_intensity=lambda : uniform(0.25, 0.75), 
@@ -107,9 +105,9 @@ def get_aug_parameters():
     horizontal_flip=True,
     fill_mode='nearest')
 
-def get_particle_positions(particle_number=2,particle_distance=10,image_size = 128):
+def get_particle_positions(particle_radius_list = [], image_size = 128):
     """Generates multiple particle x- and y-coordinates with respect to each other.
-    
+
     Inputs:  
     particle_number: number of particles to generate coordinates for
     first_particle_range: allowed x- and y-range of the centermost particle
@@ -122,20 +120,26 @@ def get_particle_positions(particle_number=2,particle_distance=10,image_size = 1
     """
 
     from numpy.random import uniform
+    from numpy import reshape
+
     
     particle_centers=[]
-    while len(particle_centers) < particle_number:
-        (x,y) = (uniform(0,image_size), uniform(0,image_size))
-        if all(((x-coord[0])**2+(y-coord[1])**2)**0.5 > particle_distance for coord in particle_centers):
-            particle_centers.append([x,y])
-
+    for radius in particle_radius_list:
+        #print('X is: ' + str(x) + ". Y is: " + str(y) + ". Radius is: " + str(radius) + ". Image size is: " + str(image_size) + '.')
+        for i in range(100):
+            (x, y) = (uniform(radius, image_size - radius), uniform(radius, image_size - radius))
+            if all(((x - coord[0]) ** 2 + (y - coord[1]) ** 2) ** 0.5 > radius for coord in particle_centers):
+                particle_centers.append([x, y])
+                break
+            elif i==99:
+                raise Exception("Couldn't place out another particle after 100 tries")
     particle_centers_x=[]
     particle_centers_y=[]
     for coordinates in particle_centers:
         particle_centers_x.append(coordinates[0])
         particle_centers_y.append(coordinates[1])
     
-    return (particle_centers_x, particle_centers_y)
+    return (particle_centers_x,particle_centers_y)
 
 def get_image(image_parameters, use_gpu=False):
     """Generate image with particles.
@@ -345,6 +349,54 @@ def plot_sample_image(image, image_parameters, figsize=(15, 5)):
 def get_label(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
     """Create and return binary target image given image parameters
     Input: Image parameters
+    Output: Array of size (image_x, image_y, number_of_features = 5), where the features at index i are:
+        i = 0 - binary image (is there a particle here?)
+        i = 1 - delta_x (to the particle center)
+        i = 2 - delta_y
+        i = 3 - radius
+        i = 4 - intensity
+    """
+    if (use_gpu):
+        pass
+        # print('GPU not yet implemented')
+        # return targetBinaryImage
+
+    import numpy as np
+
+    particle_center_x_list = image_parameters['Particle Center X List']
+    particle_center_y_list = image_parameters['Particle Center Y List']
+    particle_radius_list = image_parameters['Particle Radius List']
+    image_size = image_parameters['Image Size']
+    particle_intensities_list = image_parameters['Particle Intensities List']
+
+    targetBinaryImage = np.zeros((image_size, image_size, 5))
+
+    for particle_index in range(0, len(particle_center_x_list)):
+        center_x = particle_center_x_list[particle_index]
+        center_y = particle_center_y_list[particle_index]
+        radius = particle_radius_list[particle_index]
+        intensity = particle_intensities_list[particle_index]
+        #print('Center_x is: ' + str(center_x) + ". Center_y is: " + str(center_y) + ". Radius is: " + str(radius) + ".")
+
+        """Loops over all pixels with center in coordinates = [ceil(center - radius): floor(center + radius)]. Adds the ones with
+        center within radius.
+        """
+        for pixel_x in range(int(np.floor(center_x - radius)), int(np.ceil(center_x + radius))):
+            for pixel_y in range(int(np.floor(center_y - radius)), int(np.ceil(center_y + radius))):
+                if ((pixel_x - center_x) ** 2 + (pixel_y - center_y) ** 2 <= radius ** 2):
+                    # print('Pixel_x is: ' + str(pixel_x) + ". Pixel_y is: " + str(pixel_y) + ".")
+                    targetBinaryImage[pixel_x, pixel_y, 0] = 1
+                    targetBinaryImage[pixel_x, pixel_y, 1] = center_x - pixel_x
+                    targetBinaryImage[pixel_x, pixel_y, 2] = center_y - pixel_y
+                    # print('X vector is: ' + str(targetBinaryImage[pixel_x, pixel_y, 1]) + '. Y vector is: ' + str(targetBinaryImage[pixel_x, pixel_y, 2] ))
+                    targetBinaryImage[pixel_x, pixel_y, 3] = radius
+                    targetBinaryImage[pixel_x, pixel_y, 4] = intensity[0]
+
+    return targetBinaryImage
+
+def get_label_old(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
+    """Create and return binary target image given image parameters
+    Input: Image parameters
     Output: Binary image of the input image size where pixels containing particles are marked as ones, while rest are zeros
     """
     if (use_gpu):
@@ -393,9 +445,9 @@ def get_batch(get_image_parameters = lambda: get_image_parameters_preconfig(),
         image_batch[i,:,:,0] = get_image(image_parameters, use_gpu)
         label_batch[i,:,:,0:5] = get_label(image_parameters, use_gpu) #WRONG!!! Only since get_label isn't working right now
 
-    timetaken=time.time()-t
-    print("Time to create batch:",timetaken, "seconds.")
+    time_taken=time.time()-t
 
+    print("Time taken for batch generation of size " + str(batch_size) + ": " + str(time_taken) + " s.")
 
     return (image_batch, label_batch)
 
@@ -487,27 +539,58 @@ def get_padding(input_size, n):
 
 class DataGenerator(keras.utils.Sequence):
     """
-    len is the number of steps per epoch (how many times it trains on the same batch)
+    At the beginning of each epoch, generates a batch of size epoch_batch_size using get_image_parameters and use_GPU. Then,
+    for each step, outputs a batch of size batch_size. This is done at most len times.
     """
     def __init__(self,
                  get_image_parameters = lambda: get_image_parameters_preconfig(),
-                 batch_size = 32,
+                 epoch_batch_size = 1000,
                  use_GPU = False,
+                 batch_size = 32,
                  len = 100):
         'Initialization'
         self.get_image_parameters = get_image_parameters
-        self.batch_size = batch_size
+        self.epoch_batch_size = epoch_batch_size
         self.use_GPU = use_GPU
-        self.batch = get_batch(get_image_parameters, batch_size, use_GPU)
+        #self.batch = get_batch(get_image_parameters, epoch_batch_size, use_GPU)
         self.on_epoch_end()
         self.len = len
+        self.batch_size = batch_size
 
     def on_epoch_end(self):
-        self.batch = get_batch(self.get_image_parameters, self.batch_size, self.use_GPU)
-
+        self.batch = get_batch(self.get_image_parameters, self.epoch_batch_size, self.use_GPU)
+        image_batch, label_batch = self.batch
+        from matplotlib import pyplot as plt
+        plt.imshow(image_batch[0,:,:,0], cmap = 'gray')
+        plt.show()
+        plt.imshow(label_batch[0,:,:,0], cmap = 'gray')
+        plt.show()
 
     def __len__(self):
+
         return(self.len)
 
     def __getitem__(self, index):
-        return self.batch
+        from random import randint
+        image_indices = [randint(0,self.epoch_batch_size-1) for i in range(self.batch_size)]
+        image_batch, label_batch = self.batch
+        return image_batch[image_indices], label_batch[image_indices]
+
+def get_particle_centers(label):
+    from skimage import measure
+    from statistics import mean
+    from numpy import argwhere
+    (label_id, number_of_particles) = measure.label(label[:,:,0], return_num=True)
+    #Bra namn
+    x_mean_list=[]
+    y_mean_list=[]
+    for particle_id in range(1,number_of_particles+1):
+        x_list=[]
+        y_list=[]
+        coords = argwhere(label_id==particle_id)
+        for coord in coords:
+            x_list.append(coord[0]+label[coord[0],coord[1],1])
+            y_list.append(coord[1]+label[coord[0],coord[1],2])
+        x_mean_list.append(mean(x_list))
+        y_mean_list.append(mean(y_list))
+    return (x_mean_list, y_mean_list)
