@@ -115,7 +115,8 @@ def loss(y_true, y_pred):
     from keras import backend as K
     particle_true = K.flatten(y_true[:,:,:,0])
     P = K.flatten(y_pred[:,:,:,0])
-    particle_pred = 1/(1 + K.exp(P))
+    P = K.clip(P, -70, 70)
+    particle_pred = 1/(1 + K.exp(-P))
 
 
     loss = weighted_crossentropy(particle_true, particle_pred)
@@ -136,7 +137,8 @@ def particle_loss(y_true, y_pred):
     from keras import backend as K
     particle_true = K.flatten(y_true[:,:,:,0])
     P = K.flatten(y_pred[:,:,:,0])
-    particle_pred = 1/(1 + K.exp(P))
+    P = K.clip(P, -70, 70)
+    particle_pred = 1/(1 + K.exp(-P))
     return(weighted_crossentropy(particle_true, particle_pred))
 
 def feature_loss(y_true, y_pred, feature_number):
@@ -153,7 +155,7 @@ def particle_binary_accuracy(y_true, y_pred):
     from keras import backend as K
     particle_true = K.flatten(y_true[:,:,:,0])
     P = K.flatten(y_pred[:,:,:,0])
-    particle_pred = 1/(1 + K.exp(P))
+    particle_pred = 1/(1 + K.exp(-P))
     return K.mean(K.equal(particle_true, K.round(particle_pred)))
 
 def x_loss(y_true, y_pred):

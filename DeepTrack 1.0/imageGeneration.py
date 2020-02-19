@@ -85,7 +85,7 @@ def get_image_parameters_preconfig():
     image_parameters = get_image_parameters(
         particle_center_x_list= lambda : particle_center_x_list, 
         particle_center_y_list= lambda : particle_center_y_list, 
-        particle_radius_list=lambda : uniform(2, 3, particle_number),
+        particle_radius_list=lambda : uniform(1, 3, particle_number),
         particle_bessel_orders_list= lambda:  particle_bessel_orders_list,
         particle_intensities_list= lambda : particle_intensities_list,
         image_size=lambda : 128,
@@ -341,8 +341,8 @@ def get_batch(get_image_parameters = lambda: get_image_parameters_preconfig(),
         image_batch[i,:,:,0] = get_image(image_parameters, use_gpu)
         label_batch[i,:,:,0:5] = get_label(image_parameters, use_gpu) #WRONG!!! Only since get_label isn't working right now
 
-    timetaken=time.time()-t
-    #print(timetaken)
+    time_taken=time.time()-t
+    print("Time taken for batch generation of size " + str(batch_size) + ": " + str(time_taken) + " s.")
 
     return (image_batch, label_batch)
 
@@ -433,28 +433,34 @@ def get_padding(input_size, n):
 
 class DataGenerator(keras.utils.Sequence):
     """
-    len is the number of steps per epoch (how many times it trains on the same batch)
+    At the beginning of each epoch, generates a batch of size epoch_batch_size using get_image_parameters and use_GPU. Then,
+    for each step, outputs a batch of size batch_size. This is done at most len times.
     """
     def __init__(self,
                  get_image_parameters = lambda: get_image_parameters_preconfig(),
-                 batch_size = 32,
+                 epoch_batch_size = 1000,
                  use_GPU = False,
+                 batch_size = 32,
                  len = 100):
         'Initialization'
         self.get_image_parameters = get_image_parameters
-        self.batch_size = batch_size
+        self.epoch_batch_size = epoch_batch_size
         self.use_GPU = use_GPU
-        self.batch = get_batch(get_image_parameters, batch_size, use_GPU)
+        #self.batch = get_batch(get_image_parameters, epoch_batch_size, use_GPU)
         self.on_epoch_end()
         self.len = len
+        self.batch_size = batch_size
 
     def on_epoch_end(self):
-        self.batch = get_batch(self.get_image_parameters, self.batch_size, self.use_GPU)
+        self.batch = get_batch(self.get_image_parameters, self.epoch_batch_size, self.use_GPU)
 
 
     def __len__(self):
+
         return(self.len)
 
     def __getitem__(self, index):
-        return self.batch
-
+        from random import randint
+        image_indices = [randint(0,self.epoch_batch_size-1) for i in range(self.batch_size)]
+        image_batch, label_batch = self.batch
+        return image_batch[image_indices], label_batch[image_indices]
