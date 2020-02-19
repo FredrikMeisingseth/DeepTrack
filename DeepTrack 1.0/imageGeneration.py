@@ -391,7 +391,7 @@ def get_batch(get_image_parameters = lambda: get_image_parameters_preconfig(),
     for i in range(batch_size):
         image_parameters = get_image_parameters()
         image_batch[i,:,:,0] = get_image(image_parameters, use_gpu)
-        label_batch[i,:,:,0:5] = get_label(image_parameters, use_gpu) #WRONG!!! Only since get_label isn't working right now
+        label_batch[i,:,:,:] = get_label(image_parameters, use_gpu)
 
     timetaken=time.time()-t
     print("Time to create batch:",timetaken, "seconds.")
@@ -485,6 +485,30 @@ def get_padding(input_size, n):
 
     return (padding)
 
+def get_particle_centers(label):
+    from skimage import measure
+    from statistics import mean
+    from numpy import argwhere
+
+    (label_id, number_of_particles) = measure.label(label[:,:,0], return_num=True)
+    #Bra namn
+
+    x_mean_list=[]
+    y_mean_list=[]
+
+    for particle_id in range(1,number_of_particles+1):
+        x_list=[]
+        y_list=[]
+        coords = argwhere(label_id==particle_id)
+        for coord in coords:
+            x_list.append(coord[0]+label[coord[0],coord[1],1])
+            y_list.append(coord[1]+label[coord[0],coord[1],2])
+
+        x_mean_list.append(mean(x_list))
+        y_mean_list.append(mean(y_list))
+
+    return (x_mean_list, y_mean_list)
+
 class DataGenerator(keras.utils.Sequence):
     """
     len is the number of steps per epoch (how many times it trains on the same batch)
@@ -511,3 +535,4 @@ class DataGenerator(keras.utils.Sequence):
 
     def __getitem__(self, index):
         return self.batch
+
