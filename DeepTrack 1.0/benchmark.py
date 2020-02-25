@@ -13,22 +13,18 @@ def track_particle_method(batch):
 	return []
     #Implementation of other tracking methods
 
-def benchmark(track_method_list, loss_function, batch):
+
+def benchmark_SNR(network, batch_size):
     from time import time
+    import imageGeneration
 
-    result_list = []
+    batch = zip(imageGeneration.get_batch(return_image_parameters=True))
+    result = []
 
-    for track_method in track_method_list:
-        time_start = time()
-    	coordinate_batch = track_method(batch)
-        time_total = time()-time_start()
-        
-        result_list.append(loss_function(), time_total)
+    for image, label, image_parameters in batch:
+        t0 = time()
+        r = network.evaluate(image, label, batch_size=1)
+        delta_t = time()-t0
+        result.append(r, delta_t, image_parameters['Signal to Noise Ratio'])
 
-    return result_list
-
-
-def bechmark_snr():
-
-
-def benchmark_gradient()
+    return result
