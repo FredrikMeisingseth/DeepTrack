@@ -106,7 +106,7 @@ def weighted_crossentropy(y_true,y_pred,beta=30):
     from keras import backend as K
     T = K.flatten(y_true)
     P = K.flatten(y_pred)
-    return -10*K.mean(beta*T*K.log(P+1e-3) + (1-T)*K.log(1-P+1e-3))
+    return -20*K.mean(beta*T*K.log(P+1e-3) + (1-T)*K.log(1-P+1e-3))
 
 def loss(y_true, y_pred):
     """
@@ -120,7 +120,7 @@ def loss(y_true, y_pred):
 
 
     loss = weighted_crossentropy(particle_true, particle_pred)
-
+    feature_loss_weight = [1, 1, 1, 1, 5]
     for feature_number in range(1, 5):
         feature_true = K.flatten(y_true[:,:,:,feature_number])
         feature_pred = K.flatten(y_pred[:,:,:,feature_number])
@@ -130,7 +130,7 @@ def loss(y_true, y_pred):
         #Add the loss for each pixel which has particle_true = 1, discard those that have particle_true = 0
         feature_loss = K.sum(particle_true * feature_error)/(K.sum(particle_true) + 1e-3)
 
-        loss += feature_loss
+        loss += feature_loss*feature_loss_weight[feature_number-1]
     return loss
 
 def particle_loss(y_true, y_pred):
@@ -192,7 +192,7 @@ def r_loss(y_true, y_pred):
     return feature_loss
 
 def i_loss(y_true, y_pred):
-    feature_number = 2
+    feature_number = 4
     from keras import backend as K
     particle_true = K.flatten(y_true[:, :, :, 0])
     feature_true = K.flatten(y_true[:, :, :, feature_number])
@@ -200,4 +200,5 @@ def i_loss(y_true, y_pred):
     feature_error = K.abs(feature_true - feature_pred)
     # Add the loss for each pixel which has particle_true = 1, discard those that have particle_true = 0
     feature_loss = K.sum(particle_true * feature_error) / (K.sum(particle_true) + 1e-3)
-    return feature_loss
+    # Weight of the feature = 5
+    return 5*feature_loss

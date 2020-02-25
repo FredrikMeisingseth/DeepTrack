@@ -71,14 +71,14 @@ def get_image_parameters_preconfig(image_size = 256):
     from math import pi
 
     particle_number= randint(20, 40)
-    particle_radius_list = uniform(1, 3, particle_number)
+    particle_radius_list = uniform(0.25, 3, particle_number)
     (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list,image_size)
 
     particle_bessel_orders_list= []
     particle_intensities_list= []
     for i in range(particle_number):
         particle_bessel_orders_list.append([1,])
-        particle_intensities_list.append([uniform(0.3,0.6,1),])
+        particle_intensities_list.append([uniform(0.1,0.5,1),])
 
     image_parameters = get_image_parameters(
         particle_center_x_list= lambda : particle_center_x_list, 
@@ -87,8 +87,8 @@ def get_image_parameters_preconfig(image_size = 256):
         particle_bessel_orders_list= lambda:  particle_bessel_orders_list,
         particle_intensities_list= lambda : particle_intensities_list,
         image_size=lambda : image_size,
-        image_background_level=lambda : uniform(.3, .5),
-        signal_to_noise_ratio=lambda : uniform(3, 5),
+        image_background_level=lambda : uniform(.2, .5),
+        signal_to_noise_ratio=lambda : uniform(2, 10),
         gradient_intensity=lambda : uniform(0.25, 0.75), 
         gradient_direction=lambda : uniform(-pi, pi),
         ellipsoidal_orientation=lambda : uniform(-pi, pi, particle_number), 
