@@ -429,7 +429,8 @@ def get_label_old(image_parameters=get_image_parameters_preconfig(), use_gpu=Fal
 
 def get_batch(get_image_parameters = lambda: get_image_parameters_preconfig(),
               batch_size=32, 
-              use_gpu=False):
+              use_gpu=False, 
+              return_image_parameters=False):
     
     from numpy import zeros
     import time
@@ -438,18 +439,24 @@ def get_batch(get_image_parameters = lambda: get_image_parameters_preconfig(),
     image_size = example_image_parameters['Image Size']
     image_batch = zeros((batch_size, image_size, image_size,1)) #possibly save in smaller format? + Preallocating assumes equal image-sizes!
     label_batch = zeros((batch_size, image_size, image_size,5)) #possibly save in smaller format? + Preallocating assumes equal image-sizes!
+    image_parameters_list = []
 
     t = time.time()
     for i in range(batch_size):
         image_parameters = get_image_parameters()
         image_batch[i,:,:,0] = get_image(image_parameters, use_gpu)
         label_batch[i,:,:,:] = get_label(image_parameters, use_gpu)
+        if return_image_parameters:
+            image_parameters_list.append(image_parameters)
 
     time_taken=time.time()-t
 
     print("Time taken for batch generation of size " + str(batch_size) + ": " + str(time_taken) + " s.")
-
-    return (image_batch, label_batch)
+    
+    if return_image_parameters:
+        return (image_batch, label_batch, image_parameters_list)
+    else:
+        return (image_batch, label_batch)
 
 def save_batch(batch, label_path='data/', image_path='data/', image_filename='image', label_filename='label'):
     
