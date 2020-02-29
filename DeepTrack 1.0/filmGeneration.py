@@ -96,6 +96,44 @@ def get_image_parameters_preconfig(image_size = 256):
 
     return image_parameters
 
+
+def get_image_parameters_film(image_parameters_prev, image_size = 256):
+    from numpy import reshape, delete
+    from numpy.random import uniform, randint
+    from math import pi, cos, sin
+
+    max_move = 10
+    particle_centers = []
+    for (radius, x, y, index) in zip(image_parameters_prev['Particle Radius List'],
+                             image_parameters_prev['Particle Center X List'],
+                             image_parameters_prev['Particle Center Y List'],
+                             range(len(image_parameters_prev['Particle Radius List']))):
+
+        for i in range(100):
+            r = uniform(0, max_move)
+            theta = uniform(0, 2*pi)
+            (x_new, y_new) = (x+r*cos(theta), y+r*sin(theta))
+            if all(((x_new - coord[0]) ** 2 + (y_new - coord[1]) ** 2) ** 0.5 > radius for coord in particle_centers):
+                if (not (radius < x_new < image_size-radius)) or (not (radius < y_new < image_size-radius)):
+                    delete(image_parameters_prev['Particle Radius List'], index)
+                    delete(image_parameters_prev['Particle Bessel Orders List'], index)
+                    delete(image_parameters_prev['Particle Intensities List'], index)          
+                else:
+                    particle_centers.append([x_new, y_new])
+                break
+            elif i==99:
+                raise Exception("Couldn't place out another particle after 100 tries")
+    particle_centers_x=[]
+    particle_centers_y=[]
+    for coordinates in particle_centers:
+        particle_centers_x.append(coordinates[0])
+        particle_centers_y.append(coordinates[1])
+
+    image_parameters_prev['Particle Center X List'] = particle_centers_x
+    image_parameters_prev['Particle Center Y List'] = particle_centers_y
+
+    return image_parameters_prev
+
 def get_aug_parameters():
     return dict(rotation_range=0.2,
     width_shift_range=0.05,
@@ -427,7 +465,7 @@ def get_label_old(image_parameters=get_image_parameters_preconfig(), use_gpu=Fal
 
         return targetBinaryImage
 
-def get_batch(get_image_parameters = lambda: get_image_parameters_preconfig(),
+def get_batch(get_image_parameters = lambda prev: get_image_parameters_film(prev),
               batch_size=32, 
               use_gpu=False, 
               return_image_parameters=False):
@@ -435,19 +473,20 @@ def get_batch(get_image_parameters = lambda: get_image_parameters_preconfig(),
     from numpy import zeros
     import time
 
-    example_image_parameters = get_image_parameters()
-    image_size = example_image_parameters['Image Size']
+    image_parameters_prev = get_image_parameters_preconfig()
+    image_size = image_parameters_prev['Image Size']
     image_batch = zeros((batch_size, image_size, image_size,1)) #possibly save in smaller format? + Preallocating assumes equal image-sizes!
     label_batch = zeros((batch_size, image_size, image_size,5)) #possibly save in smaller format? + Preallocating assumes equal image-sizes!
     image_parameters_list = []
 
     t = time.time()
     for i in range(batch_size):
-        image_parameters = get_image_parameters()
+        image_parameters = get_image_parameters(image_parameters_prev)
         image_batch[i,:,:,0] = get_image(image_parameters, use_gpu)
         label_batch[i,:,:,:] = get_label(image_parameters, use_gpu)
         if return_image_parameters:
             image_parameters_list.append(image_parameters)
+        image_parameters_prev = image_parameters
 
     time_taken=time.time()-t
 
@@ -464,11 +503,11 @@ def save_batch(batch, label_path='data/', image_path='data/', image_filename='im
     from os.path import join
     
     (image_batch, label_batch) = batch
-    (number_of_images, image_size_x, image_size_y) = image_batch.shape
+    (number_of_images, image_size_x, image_size_y, channels) = image_batch.shape
 
     for i in range(number_of_images):
         imsave(join(image_path, image_filename +"%d.png"%i),image_batch[i,:,:])
-        imsave(join(label_path, label_filename +"%d.png"%i),label_batch[i,:,:])
+        imsave(join(label_path, label_filename +"%d.png"%i),label_batch[i,:,:,0])
 
     return
 
