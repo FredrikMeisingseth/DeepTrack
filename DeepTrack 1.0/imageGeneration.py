@@ -67,12 +67,12 @@ def get_image_parameters_preconfig():
     from numpy.random import uniform, randint
     from math import pi
 
-    particle_number= randint(10, 30)
+    particle_number= randint(1, 5)
     first_particle_range = 10
     other_particle_range = 200
     particle_distance = 30
 
-    (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_number, 4)
+    (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_number, 4,image_size=256)
     particle_bessel_orders_list= []
     particle_intensities_list= []
     for i in range(particle_number):
@@ -82,16 +82,16 @@ def get_image_parameters_preconfig():
     image_parameters = get_image_parameters(
         particle_center_x_list= lambda : particle_center_x_list, 
         particle_center_y_list= lambda : particle_center_y_list, 
-        particle_radius_list=lambda : uniform(2, 5, particle_number), 
+        particle_radius_list=lambda : uniform(1, 3, particle_number), 
         particle_bessel_orders_list= lambda:  particle_bessel_orders_list,
         particle_intensities_list= lambda : particle_intensities_list,
-        image_size=lambda : 128, 
+        image_size=lambda : 256, 
         image_background_level=lambda : uniform(.3, .5),
-        signal_to_noise_ratio=lambda : uniform(3, 5),
+        signal_to_noise_ratio=lambda : uniform(2, 10),
         gradient_intensity=lambda : uniform(0.25, 0.75), 
         gradient_direction=lambda : uniform(-pi, pi),
         ellipsoidal_orientation=lambda : uniform(-pi, pi, particle_number), 
-        ellipticity= lambda: 1)
+        ellipticity= lambda: 0.5)
 
     return image_parameters
 
@@ -198,47 +198,13 @@ def get_image(image_parameters, use_gpu=False):
 
     # calculate the particle profiles of all particles and add them to image_particles
     if(use_gpu):
-        #calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list)
-        image_particles = calc_particle_profile_cpu_BESSEL_ORG(image_particles, particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list,image_coordinate_x, image_coordinate_y,ellipticity,image_size)
+        #image_particles = calc_particle_profile_cpu_BESSEL_ORG(image_particles, particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list,image_coordinate_x, image_coordinate_y,ellipticity,image_size)
+        calc_particle_profile_cpu_GAUSS_CUTOFF(image_particles, particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list,ellipticity,image_size)
+
     else:
-        #image_particles = calc_particle_profile_cpu_BESSEL_CUTOFF(image_particles, particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list,ellipticity,image_size)
-        from scipy.special import jv as bessel    
-        from numpy import ceil, meshgrid, arange, ones, zeros, sin, cos, sqrt, clip, array
+        image_particles = calc_particle_profile_cpu_BESSEL_CUTOFF(image_particles, particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list,ellipticity,image_size)
+        #calc_particle_profile_gpu_ORG(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list, ellipsoidal_orientation_list,ellipticity)
 
-        for particle_center_x, particle_center_y, particle_radius, particle_bessel_orders, particle_intensities, ellipsoidal_orientation in zip(particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list):
-                    
-            start_x = int(max(ceil(particle_center_x-particle_radius*2), 0))
-            stop_x = int(min(ceil(particle_center_x+particle_radius*2), image_size))
-            start_y = int(max(ceil(particle_center_y-particle_radius*2), 0))
-            stop_y = int(min(ceil(particle_center_y+particle_radius*2), image_size))
-
-            # calculate matrix coordinates from the center of the image
-            image_coordinate_x, image_coordinate_y = meshgrid(arange(0, stop_x-start_x), 
-                                                            arange(0, stop_y-start_y), 
-                                                            sparse=False, 
-                                                            indexing='ij')
-
-            # calculate the radial distance from the center of the particle 
-            # normalized by the particle radius
-            radial_distance_from_particle = sqrt((image_coordinate_x - particle_center_x)**2 
-                                            + (image_coordinate_y - particle_center_y)**2 
-                                            + .001**2) / particle_radius
-            
-
-            #for elliptical particles
-            rotated_distance_x = (image_coordinate_x - particle_center_x)*cos(ellipsoidal_orientation) + (image_coordinate_y - particle_center_y)*sin(ellipsoidal_orientation)
-            rotated_distance_y = -(image_coordinate_x - particle_center_x)*sin(ellipsoidal_orientation) + (image_coordinate_y - particle_center_y)*cos(ellipsoidal_orientation)
-            
-            
-            elliptical_distance_from_particle = sqrt((rotated_distance_x)**2 
-                                            + (rotated_distance_y / ellipticity)**2 
-                                            + .001**2) / particle_radius
-
-            # calculate particle profile
-            for particle_bessel_order, particle_intensity in zip(particle_bessel_orders, particle_intensities):
-                image_particle = 4 * particle_bessel_order**2.5 * (bessel(particle_bessel_order, elliptical_distance_from_particle) / elliptical_distance_from_particle)**2
-                image_particles[start_x:image_particle.shape[0]+start_x,start_y:image_particle.shape[1]+start_y] = image_particles[start_x:image_particle.shape[0]+start_x,start_y:image_particle.shape[1]+start_y] + particle_intensity * image_particle            
-        
 
     # calculate image without noise as background image plus particle image
     image_particles_without_noise = clip(image_background + image_particles, 0, 1)
@@ -250,7 +216,7 @@ def get_image(image_parameters, use_gpu=False):
 
 def calc_particle_profile_cpu_BESSEL_ORG(image_particles, particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list,image_coordinate_x, image_coordinate_y,ellipticity,image_size):
     from scipy.special import jv as bessel
-    from numpy import meshgrid, arange, ones, zeros, sin, cos, sqrt, clip, array
+    from numpy import sin, cos, sqrt
     
     for particle_center_x, particle_center_y, particle_radius, particle_bessel_orders, particle_intensities, ellipsoidal_orientation in zip(particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list):
     
@@ -280,20 +246,20 @@ def calc_particle_profile_cpu_BESSEL_ORG(image_particles, particle_center_x_list
 
 def calc_particle_profile_cpu_BESSEL_CUTOFF(image_particles, particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list,ellipticity,image_size):
     from scipy.special import jv as bessel    
-    from numpy import ceil, meshgrid, arange, ones, zeros, sin, cos, sqrt, clip, array
+    from numpy import ceil, meshgrid, arange, sin, cos, sqrt
 
     for particle_center_x, particle_center_y, particle_radius, particle_bessel_orders, particle_intensities, ellipsoidal_orientation in zip(particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list):
-                
-        start_x = int(max(ceil(particle_center_x-particle_radius*2), 0))
-        stop_x = int(min(ceil(particle_center_x+particle_radius*2), image_size))
-        start_y = int(max(ceil(particle_center_y-particle_radius*2), 0))
-        stop_y = int(min(ceil(particle_center_y+particle_radius*2), image_size))
+
+        start_x = int(max(ceil(particle_center_x-particle_radius*3), 0))
+        stop_x = int(min(ceil(particle_center_x+particle_radius*3), image_size))
+        start_y = int(max(ceil(particle_center_y-particle_radius*3), 0))
+        stop_y = int(min(ceil(particle_center_y+particle_radius*3), image_size))
 
         # calculate matrix coordinates from the center of the image
-        image_coordinate_x, image_coordinate_y = meshgrid(arange(0, stop_x-start_x), 
-                                                        arange(0, stop_y-start_y), 
-                                                        sparse=False, 
-                                                        indexing='ij')
+        image_coordinate_x, image_coordinate_y = meshgrid(arange(start_x, stop_x), 
+                                                            arange(start_y, stop_y), 
+                                                            sparse=False, 
+                                                            indexing='ij')
 
         # calculate the radial distance from the center of the particle 
         # normalized by the particle radius
@@ -314,23 +280,25 @@ def calc_particle_profile_cpu_BESSEL_CUTOFF(image_particles, particle_center_x_l
         # calculate particle profile
         for particle_bessel_order, particle_intensity in zip(particle_bessel_orders, particle_intensities):
             image_particle = 4 * particle_bessel_order**2.5 * (bessel(particle_bessel_order, elliptical_distance_from_particle) / elliptical_distance_from_particle)**2
-            image_particles[start_x:image_particle.shape[0]+start_x,start_y:image_particle.shape[1]+start_y] = image_particles[start_x:image_particle.shape[0]+start_x,start_y:image_particle.shape[1]+start_y] + particle_intensity * image_particle            
-    
+            image_particles[start_x:stop_x,start_y:stop_y] = image_particles[start_x:stop_x,start_y:stop_y] + particle_intensity * image_particle            
+
+
     return image_particles
 
-def calc_particle_profile_cpu_GAUSS(image_particles, particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list):
-    from numpy import exp,ceil
+def calc_particle_profile_cpu_GAUSS_CUTOFF(image_particles, particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list,ellipticity,image_size):
+    from numpy import exp,ceil, sin, cos,asarray,meshgrid,arange
     from numba import njit,prange
 
-    for particle_center_x, particle_center_y, particle_radius, particle_bessel_orders, particle_intensity, ellipsoidal_orientation in zip(particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list):
+    ellipsoidal_orientation = asarray(ellipsoidal_orientation_list)
+    particle_radius = asarray(particle_radius_list)
+
+    #Calculate matrix parameters for ellipticity
+    a_list = cos(ellipsoidal_orientation)**2/(2*(particle_radius*ellipticity)**2) + sin(ellipsoidal_orientation)**2/(2*(particle_radius)**2)
+    b_list = -sin(2*ellipsoidal_orientation)/(4*(particle_radius*ellipticity)**2) + sin(2*ellipsoidal_orientation)/(4*(particle_radius)**2)
+    c_list = sin(ellipsoidal_orientation)**2/(2*(particle_radius*ellipticity)**2) + cos(ellipsoidal_orientation)**2/(2*(particle_radius)**2)
+
+    for particle_center_x, particle_center_y, particle_radius, particle_bessel_orders, particle_intensity, ellipsoidal_orientation,a,b,c in zip(particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list,a_list,b_list,c_list):
         #We use formula from https://en.wikipedia.org/wiki/Gaussian_function and set sigmaX = ellipticity*radius and sigmaY = radius.
-
-        #Calculate matrix parameters for ellipticity
-        a = cos(ellipsoidal_orientation)**2/(2*(particle_radius*ellipticity)**2) + sin(ellipsoidal_orientation)**2/(2*(particle_radius)**2)
-        b = -sin(2*ellipsoidal_orientation)/(4*(particle_radius*ellipticity)**2) + sin(2*ellipsoidal_orientation)/(4*(particle_radius)**2)
-        c = sin(ellipsoidal_orientation)**2/(2*(particle_radius*ellipticity)**2) + cos(ellipsoidal_orientation)**2/(2*(particle_radius)**2)
-
-        A = [[a,b],[b,c]]
 
         start_x = int(max(ceil(particle_center_x-particle_radius*2), 0))
         stop_x = int(min(ceil(particle_center_x+particle_radius*2), image_size))
@@ -339,56 +307,63 @@ def calc_particle_profile_cpu_GAUSS(image_particles, particle_center_x_list, par
 
         particle_intensity = particle_intensity[0][0]
 
-        @njit(parallel = True)
-        def calc_particle_profile_cpu(image_particles):
-            for x in prange(start_x, stop_x,1):
-                for y in prange(start_y,stop_y,1):
-                    image_particles[x,y] += particle_intensity*exp(-(a*(x-particle_center_x)**2 + 2*b*(x-particle_center_x)*(y-particle_center_y) + c*(y-particle_center_y)**2))
-        
-        calc_particle_profile_cpu(image_particles)   
+        # calculate matrix coordinates from the center of the image
+        image_coordinate_x, image_coordinate_y = meshgrid(arange(start_x, stop_x), 
+                                                            arange(start_y, stop_y), 
+                                                            sparse=False, 
+                                                            indexing='ij')
 
-def calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list):
+        image_particles[start_x:stop_x,start_y:stop_y] += particle_intensity*exp(-(a*(image_coordinate_x-particle_center_x)**2 + 2*b*(image_coordinate_x-particle_center_x)*(image_coordinate_y-particle_center_y) + c*(image_coordinate_y-particle_center_y)**2))
+        
+def calc_particle_profile_gpu_ORG(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list, ellipsoidal_orientation_list,ellipticity):
     from numba import cuda
     from math import ceil,exp
-    from numpy import stack,asarray
+    from numpy import zeros, cos, sin, stack,asarray
+
+    ellipsoidal_orientation = asarray(ellipsoidal_orientation_list)
+    particle_radius = asarray(particle_radius_list)
+
+    #We use formula from https://en.wikipedia.org/wiki/Gaussian_function and set sigmaX = ellipticity*radius and sigmaY = radius.
+
+    #Calculate matrix parameters for ellipticity
+    a = cos(ellipsoidal_orientation)**2/(2*(particle_radius*ellipticity)**2) + sin(ellipsoidal_orientation)**2/(2*(particle_radius)**2)
+    b = -sin(2*ellipsoidal_orientation)/(4*(particle_radius*ellipticity)**2) + sin(2*ellipsoidal_orientation)/(4*(particle_radius)**2)
+    c = sin(ellipsoidal_orientation)**2/(2*(particle_radius*ellipticity)**2) + cos(ellipsoidal_orientation)**2/(2*(particle_radius)**2)
 
 
     # the cuda kernel calculating the value of the Gauss function for each pixel in out image
     @cuda.jit
-    def part_prof(d_pos,d_radius_and_intensities,d_img_part):
+    def part_prof(d_pos,d_img_part):
 
         x, y = cuda.grid(2)
 
-        if x >= d_img_part.shape[0] and y >= d_img_part.shape[1]:
-            # Quit if (x, y) is outside of valid C boundary
+        if x >= d_img_part.shape[0] or y >= d_img_part.shape[1]:
+            # Quit if (x, y) is outside of valid boundary
             return
 
         for i in range(d_pos.shape[1]):
-
-            tmp = d_radius_and_intensities[1][i]*exp(-((x-d_pos[0][i])**2/(2*d_radius_and_intensities[0][i]**2) + (y-d_pos[1][i])**2/(2*d_radius_and_intensities[0][i]**2)))
-
+            tmp = d_pos[3][i]*exp(-(d_pos[4][i]*(x-d_pos[0][i])**2 + d_pos[5][i]*(x-d_pos[0][i])*(y-d_pos[1][i]) + d_pos[6][i]*(y-d_pos[1][i])**2))
             d_img_part[x, y] = d_img_part[x,y] + tmp
 
-    # define threads per block and blocks per grid. This dictates how our cuda kernel devides tasks.
-    TPB = 32
+    # define threads per block and blocks per grid. This dictates how our cuda kernel divides tasks.
+    TPB = 16
     threadsperblock = (TPB, TPB)
     blockspergrid_x = int(ceil(image_particles.shape[0] / threadsperblock[0]))
     blockspergrid_y = int(ceil(image_particles.shape[1] / threadsperblock[1]))
     blockspergrid = (blockspergrid_x, blockspergrid_y)
     
 
-    # merge arrays so that there are fewer (but more complex) matrices to send to GPU
-    particle_centers = stack([particle_center_x_list,particle_center_y_list])
-    radius_and_intensities = stack([particle_radius_list,asarray(particle_intensities_list)[:,0,0]])
+    # merge arrays so that there are fewer (but more complex) matrices to send to GPU. (stacks x-position,y-position,radius, intensities and constants a,b,c)
+    particle_data = stack([particle_center_x_list,particle_center_y_list,particle_radius_list,asarray(particle_intensities_list)[:,0,0],a,b,c])
+
     # introduce stream dictating the order of data being sent to GPU
     # create an cuda object of each object we wish to have handled by the GPU. This is because data transfer to and from GPU is costly.
     stream = cuda.stream()
-    d_pos = cuda.to_device(particle_centers,stream = stream)
-    d_radius_and_intensities = cuda.to_device(radius_and_intensities,stream = stream)
+    d_pos = cuda.to_device(particle_data,stream = stream)
     d_img_part = cuda.to_device(image_particles,stream = stream)
 
     # call the cuda kernel
-    part_prof[blockspergrid, threadsperblock](d_pos,d_radius_and_intensities, d_img_part)
+    part_prof[blockspergrid, threadsperblock](d_pos, d_img_part)
 
     # retrieve our image particle matrix from GPU
     d_img_part.copy_to_host(image_particles, stream = stream)
@@ -498,12 +473,13 @@ def get_batch(get_image_parameters = lambda: get_image_parameters_preconfig(),
     from numpy import zeros
     import time
 
+    t = time.time()
     example_image_parameters = get_image_parameters()
     image_size = example_image_parameters['Image Size']
     image_batch = zeros((batch_size, image_size, image_size)) #possibly save in smaller format? + Preallocating assumes equal image-sizes!
     label_batch = zeros((batch_size, image_size, image_size)) #possibly save in smaller format? + Preallocating assumes equal image-sizes!
 
-    t = time.time()
+    
     for i in range(batch_size):
         image_parameters = get_image_parameters()
         image_batch[i] = get_image(image_parameters, use_gpu)
