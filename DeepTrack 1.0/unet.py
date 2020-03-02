@@ -25,7 +25,7 @@ def create_unet(pretrained_weights=None, input_size=(None, None, 1)):
     """
     from keras.models import Model
     from keras.optimizers import Adam
-    from keras.layers import Conv2D, MaxPooling2D, Input, Dropout, UpSampling2D, concatenate
+    from keras.layers import Conv2D, MaxPooling2D, Input, Dropout, UpSampling2D, concatenate, ConvLSTM2DCell
 
     input = Input(input_size)
 
@@ -49,25 +49,29 @@ def create_unet(pretrained_weights=None, input_size=(None, None, 1)):
 
     up6 = Conv2D(64, 2, activation='relu', padding='same', kernel_initializer='he_normal')(
         UpSampling2D(size=(2, 2))(drop5))
-    merge6 = concatenate([drop4, up6], axis=3)
+    lstd1 = GRUConv2D_onepass()(drop4)
+    merge6 = concatenate([lstd1, up6], axis=3)
     conv6 = Conv2D(64, 3, activation='relu', padding='same', kernel_initializer='he_normal')(merge6)
     conv6 = Conv2D(64, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv6)
 
     up7 = Conv2D(32, 2, activation='relu', padding='same', kernel_initializer='he_normal')(
         UpSampling2D(size=(2, 2))(conv6))
-    merge7 = concatenate([conv3, up7], axis=3)
+    lstd2 = ConvLSTM2DCell(32, 3)(conv3)    
+    merge7 = concatenate([lstd2, up7], axis=3)
     conv7 = Conv2D(32, 3, activation='relu', padding='same', kernel_initializer='he_normal')(merge7)
     conv7 = Conv2D(32, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv7)
 
     up8 = Conv2D(16, 2, activation='relu', padding='same', kernel_initializer='he_normal')(
         UpSampling2D(size=(2, 2))(conv7))
-    merge8 = concatenate([conv2, up8], axis=3)
+    lstd3 = ConvLSTM2DCell(16, 3)(conv2)
+    merge8 = concatenate([lstd3, up8], axis=3)
     conv8 = Conv2D(16, 3, activation='relu', padding='same', kernel_initializer='he_normal')(merge8)
     conv8 = Conv2D(16, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv8)
 
     up9 = Conv2D(8, 2, activation='relu', padding='same', kernel_initializer='he_normal')(
         UpSampling2D(size=(2, 2))(conv8))
-    merge9 = concatenate([conv1, up9], axis=3)
+    lstd4 = ConvLSTM2DCell(8,3)(conv1)        
+    merge9 = concatenate([lstd4, up9], axis=3)
     conv9 = Conv2D(8, 3, activation='relu', padding='same', kernel_initializer='he_normal')(merge9)
     conv9 = Conv2D(8, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv9)
 
@@ -202,3 +206,29 @@ def i_loss(y_true, y_pred):
     feature_loss = K.sum(particle_true * feature_error) / (K.sum(particle_true) + 1e-3)
     # Weight of the feature = 5
     return 5*feature_loss
+
+import tensorflow as tf
+
+
+# class GRUConv2D_onepass(Can): # inherit the __call__ method
+#     def __init__(self,num_in,num_h,*args,**kwargs):
+#         Can.__init__(self)
+#         # assume input has dimension num_in.
+#         self.num_in,self.num_h = num_in, num_h
+#         self.wz = Conv2D(num_in+num_h,num_h,usebias=False,*args,**kwargs)
+#         self.wr = Conv2D(num_in+num_h,num_h,usebias=False,*args,**kwargs)
+#         self.w = Conv2D(num_in+num_h,num_h,usebias=False,*args,**kwargs)
+#         self.incan([self.wz,self.wr,self.w])
+
+#     def __call__(self,i):
+#         # assume hidden, input is of shape [batch,num_h] and [batch,num_in]
+#         hidden = i[0]
+#         inp = i[1]
+#         wz,wr,w = self.wz,self.wr,self.w
+#         dims = tf.rank(inp)
+#         c = tf.concat([hidden,inp],axis=dims-1)
+#         z = tf.sigmoid(wz(c))
+#         r = tf.sigmoid(wr(c))
+#         h_c = tf.tanh(w(tf.concat([hidden*r,inp],axis=dims-1)))
+#         h_new = (1-z) * hidden + z * h_c
+#         return h_new    

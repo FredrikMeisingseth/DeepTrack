@@ -1,6 +1,3 @@
-import keras
-
-
 def get_image_parameters(
     particle_center_x_list=lambda : [0, ], 
     particle_center_y_list=lambda : [0, ], 
@@ -70,7 +67,7 @@ def get_image_parameters_preconfig(image_size = 256):
     from numpy.random import uniform, randint
     from math import pi
 
-    particle_number= randint(20, 40)
+    particle_number= randint(5, 6)
     particle_radius_list = uniform(0.25, 3, particle_number)
     (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list,image_size)
 
@@ -88,7 +85,7 @@ def get_image_parameters_preconfig(image_size = 256):
         particle_intensities_list= lambda : particle_intensities_list,
         image_size=lambda : image_size,
         image_background_level=lambda : uniform(.2, .5),
-        signal_to_noise_ratio=lambda : uniform(2, 10),
+        signal_to_noise_ratio=lambda : uniform(0, 1),
         gradient_intensity=lambda : uniform(0.25, 0.75), 
         gradient_direction=lambda : uniform(-pi, pi),
         ellipsoidal_orientation=lambda : uniform(-pi, pi, particle_number), 
@@ -102,7 +99,7 @@ def get_image_parameters_film(image_parameters_prev, image_size = 256):
     from numpy.random import uniform, randint
     from math import pi, cos, sin
 
-    max_move = 10
+    max_move = 20
     particle_centers = []
     for (radius, x, y, index) in zip(image_parameters_prev['Particle Radius List'],
                              image_parameters_prev['Particle Center X List'],
@@ -239,7 +236,8 @@ def get_image(image_parameters, use_gpu=False):
 
     # calculate the particle profiles of all particles and add them to image_particles
     if(use_gpu):
-        calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list)
+        print('No GPU!')
+        #calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list)
     else:
         from scipy.special import jv as bessel
         
@@ -276,48 +274,48 @@ def get_image(image_parameters, use_gpu=False):
 
     return image_particles_with_noise
 
-def calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list):
-    from numba import cuda
-    from math import ceil,exp
+# def calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list):
+#     from numba import cuda
+#     from math import ceil,exp
 
 
-    # the cuda kernel calculating the value of the Gauss function for each pixel in out image
-    @cuda.jit
-    def part_prof(d_dist_x,d_dist_y,d_radiuses,d_img_part,d_particle_intensities):
+#     # the cuda kernel calculating the value of the Gauss function for each pixel in out image
+#     @cuda.jit
+#     def part_prof(d_dist_x,d_dist_y,d_radiuses,d_img_part,d_particle_intensities):
 
-        x, y = cuda.grid(2)
+#         x, y = cuda.grid(2)
 
-        if x >= d_img_part.shape[0] and y >= d_img_part.shape[1]:
-            # Quit if (x, y) is outside of valid C boundary
-            return
+#         if x >= d_img_part.shape[0] and y >= d_img_part.shape[1]:
+#             # Quit if (x, y) is outside of valid C boundary
+#             return
 
-        for i in range(d_dist_x.shape[0]):
+#         for i in range(d_dist_x.shape[0]):
 
-            tmp = d_particle_intensities[i][0][0]*exp(-((x-d_dist_x[i])**2/(2*d_radiuses[i]**2) + (y-d_dist_y[i])**2/(2*d_radiuses[i]**2)))
+#             tmp = d_particle_intensities[i][0][0]*exp(-((x-d_dist_x[i])**2/(2*d_radiuses[i]**2) + (y-d_dist_y[i])**2/(2*d_radiuses[i]**2)))
 
-            d_img_part[x, y] = d_img_part[x,y] + tmp
+#             d_img_part[x, y] = d_img_part[x,y] + tmp
 
-    # define threads per block and blocks per grid. This dictates how our cuda kernel devides tasks.
-    TPB = 32
-    threadsperblock = (TPB, TPB)
-    blockspergrid_x = int(ceil(image_particles.shape[0] / threadsperblock[0]))
-    blockspergrid_y = int(ceil(image_particles.shape[1] / threadsperblock[1]))
-    blockspergrid = (blockspergrid_x, blockspergrid_y)
+#     # define threads per block and blocks per grid. This dictates how our cuda kernel devides tasks.
+#     TPB = 32
+#     threadsperblock = (TPB, TPB)
+#     blockspergrid_x = int(ceil(image_particles.shape[0] / threadsperblock[0]))
+#     blockspergrid_y = int(ceil(image_particles.shape[1] / threadsperblock[1]))
+#     blockspergrid = (blockspergrid_x, blockspergrid_y)
     
-    # introduce stream dictating the order of data being sent to GPU
-    # create an cuda object of each object we wish to have handled by the GPU. This is because data transfer to and from GPU is costly.
-    stream = cuda.stream()
-    d_pos_x = cuda.to_device(particle_center_x_list,stream = stream)
-    d_pos_y = cuda.to_device(particle_center_y_list,stream = stream)
-    d_radiuses = cuda.to_device(particle_radius_list,stream = stream)
-    d_img_part = cuda.to_device(image_particles,stream = stream)
-    d_particle_intensities = cuda.to_device(particle_intensities_list,stream = stream)
+#     # introduce stream dictating the order of data being sent to GPU
+#     # create an cuda object of each object we wish to have handled by the GPU. This is because data transfer to and from GPU is costly.
+#     stream = cuda.stream()
+#     d_pos_x = cuda.to_device(particle_center_x_list,stream = stream)
+#     d_pos_y = cuda.to_device(particle_center_y_list,stream = stream)
+#     d_radiuses = cuda.to_device(particle_radius_list,stream = stream)
+#     d_img_part = cuda.to_device(image_particles,stream = stream)
+#     d_particle_intensities = cuda.to_device(particle_intensities_list,stream = stream)
 
-    # call the cuda kernel
-    part_prof[blockspergrid, threadsperblock](d_pos_x,d_pos_y,d_radiuses, d_img_part,d_particle_intensities)
+#     # call the cuda kernel
+#     part_prof[blockspergrid, threadsperblock](d_pos_x,d_pos_y,d_radiuses, d_img_part,d_particle_intensities)
 
-    # retrieve our image particle matrix from GPU
-    d_img_part.copy_to_host(image_particles, stream = stream)
+#     # retrieve our image particle matrix from GPU
+#     d_img_part.copy_to_host(image_particles, stream = stream)
 
 def draw_image(img):
     from matplotlib import pyplot as plt
@@ -607,44 +605,7 @@ def get_particle_centers(label):
 
     return (x_mean_list, y_mean_list)
 
-class DataGenerator(keras.utils.Sequence):
-    """
-    At the beginning of each epoch, generates a batch of size epoch_batch_size using get_image_parameters and use_GPU. Then,
-    for each step, outputs a batch of size batch_size. This is done at most len times.
-    """
-    def __init__(self,
-                 get_image_parameters = lambda: get_image_parameters_preconfig(),
-                 epoch_batch_size = 1000,
-                 use_GPU = False,
-                 batch_size = 32,
-                 len = 100):
-        'Initialization'
-        self.get_image_parameters = get_image_parameters
-        self.epoch_batch_size = epoch_batch_size
-        self.use_GPU = use_GPU
-        #self.batch = get_batch(get_image_parameters, epoch_batch_size, use_GPU)
-        self.on_epoch_end()
-        self.len = len
-        self.batch_size = batch_size
 
-    def on_epoch_end(self):
-        self.batch = get_batch(self.get_image_parameters, self.epoch_batch_size, self.use_GPU)
-        image_batch, label_batch = self.batch
-        from matplotlib import pyplot as plt
-        plt.imshow(image_batch[0,:,:,0], cmap = 'gray')
-        plt.show()
-        plt.imshow(label_batch[0,:,:,0], cmap = 'gray')
-        plt.show()
-
-    def __len__(self):
-
-        return(self.len)
-
-    def __getitem__(self, index):
-        from random import randint
-        image_indices = [randint(0,self.epoch_batch_size-1) for i in range(self.batch_size)]
-        image_batch, label_batch = self.batch
-        return image_batch[image_indices], label_batch[image_indices]
 
 def get_particle_centers(label):
     from skimage import measure
