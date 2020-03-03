@@ -203,11 +203,22 @@ def get_image(image_parameters, use_gpu=False):
     if(use_gpu):
         calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list)
     else:
-        from scipy.special import jv as bessel
-        
+        from scipy.special import jv as bessel    
+        from numpy import ceil, meshgrid, arange, sin, cos, sqrt
+
         for particle_center_x, particle_center_y, particle_radius, particle_bessel_orders, particle_intensities, ellipsoidal_orientation in zip(particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list, particle_intensities_list, ellipsoidal_orientation_list):
-        
-        
+
+            start_x = int(max(ceil(particle_center_x-particle_radius*3), 0))
+            stop_x = int(min(ceil(particle_center_x+particle_radius*3), image_size))
+            start_y = int(max(ceil(particle_center_y-particle_radius*3), 0))
+            stop_y = int(min(ceil(particle_center_y+particle_radius*3), image_size))
+
+            # calculate matrix coordinates from the center of the image
+            image_coordinate_x, image_coordinate_y = meshgrid(arange(start_x, stop_x), 
+                                                                arange(start_y, stop_y), 
+                                                                sparse=False, 
+                                                                indexing='ij')
+
             # calculate the radial distance from the center of the particle 
             # normalized by the particle radius
             radial_distance_from_particle = sqrt((image_coordinate_x - particle_center_x)**2 
@@ -215,7 +226,7 @@ def get_image(image_parameters, use_gpu=False):
                                             + .001**2) / particle_radius
             
 
-            # for elliptical particles
+            #for elliptical particles
             rotated_distance_x = (image_coordinate_x - particle_center_x)*cos(ellipsoidal_orientation) + (image_coordinate_y - particle_center_y)*sin(ellipsoidal_orientation)
             rotated_distance_y = -(image_coordinate_x - particle_center_x)*sin(ellipsoidal_orientation) + (image_coordinate_y - particle_center_y)*cos(ellipsoidal_orientation)
             
@@ -224,11 +235,11 @@ def get_image(image_parameters, use_gpu=False):
                                             + (rotated_distance_y / ellipticity)**2 
                                             + .001**2) / particle_radius
 
-
             # calculate particle profile
             for particle_bessel_order, particle_intensity in zip(particle_bessel_orders, particle_intensities):
                 image_particle = 4 * particle_bessel_order**2.5 * (bessel(particle_bessel_order, elliptical_distance_from_particle) / elliptical_distance_from_particle)**2
-                image_particles = image_particles + particle_intensity * image_particle
+                image_particles[start_x:stop_x,start_y:stop_y] = image_particles[start_x:stop_x,start_y:stop_y] + particle_intensity * image_particle            
+
 
     # calculate image without noise as background image plus particle image
     image_particles_without_noise = clip(image_background + image_particles, 0, 1)
