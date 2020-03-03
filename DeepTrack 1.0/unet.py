@@ -207,7 +207,29 @@ def i_loss(y_true, y_pred):
     # Weight of the feature = 5
     return 5*feature_loss
 
+
 import tensorflow as tf
+from keras import backend as K
+from keras.layers import Layer
+
+class MyGRUConv2D_onepass(Layer):
+    def __init__(self, output_dim, **kwargs):
+        self.output_dim = output_dim
+        super(MyLayer, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        # Create a trainable weight variable for this layer.
+        self.kernel = self.add_weight(name='kernel', 
+                                      shape=(input_shape[1], self.output_dim),
+                                      initializer='uniform',
+                                      trainable=True)
+        super(MyLayer, self).build(input_shape)  # Be sure to call this at the end
+
+    def call(self, x):
+        return K.dot(x, self.kernel)
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], self.output_dim)
 
 
 # class GRUConv2D_onepass(Can): # inherit the __call__ method
@@ -232,3 +254,212 @@ import tensorflow as tf
 #         h_c = tf.tanh(w(tf.concat([hidden*r,inp],axis=dims-1)))
 #         h_new = (1-z) * hidden + z * h_c
 #         return h_new    
+
+class Can:
+    import tensorflow as tf
+    import numpy as np
+    import time
+
+    from .misc import *
+
+
+    def __init__(self):
+        self.subcans = [] # other cans contained
+        self.weights = [] # trainable
+        self.biases = []
+        self.only_weights = []
+        self.variables = [] # should save with the weights, but not trainable
+        self.updates = [] # update ops, mainly useful for batch norm
+        # well, you decide which one to put into
+
+        self.inference = None
+
+    # by making weight, you create trainable variables
+    def make_weight(self,shape,name='W', mean=0., stddev=1e-2, initializer=None):
+        mean,stddev = [float(k) for k in [mean,stddev]]
+        if initializer is None:
+            initial = tf.truncated_normal(shape, mean=mean, stddev=stddev)
+        else:
+            initial = initializer
+        w = tf.Variable(initial,name=name)
+        self.weights.append(w)
+        self.only_weights.append(w)
+        return w
+
+    def make_bias(self,shape,name='b', mean=0.):
+        mean = float(mean)
+        initial = tf.constant(mean, shape=shape)
+        b = tf.Variable(initial,name=name)
+        self.weights.append(b)
+        self.biases.append(b)
+        return b
+
+    # make a variable that is not trainable, by passing in a numpy array
+    def make_variable(self,nparray,name='v'):
+        v = tf.Variable(nparray,name=name)
+        self.variables.append(v)
+        return v
+
+    # add an op as update op of this can
+    def make_update(self,op):
+        self.updates.append(op)
+        return op
+
+    # put other cans inside this can, as subcans
+    def incan(self,c):
+        if hasattr(c,'__iter__'): # if iterable
+            self.subcans += list(c)
+        else:
+            self.subcans += [c]
+        # return self
+
+    # another name for incan
+    def add(self,c):
+        self.incan(c)
+        return c
+
+    # if you don't wanna specify the __call__ function manually,
+    # you may chain up all the subcans to make one:
+    def chain(self):
+        def call(i):
+            for c in self.subcans:
+                i = c(i)
+            return i
+        self.set_function(call)
+
+    # traverse the tree of all subcans,
+    # and extract a flattened list of certain attributes.
+    # the attribute itself should be a list, such as 'weights'.
+    # f is the transformer function, applied to every entry
+    def traverse(self,target='weights',f=lambda x:x):
+        l = [f(a) for a in getattr(self,target)] + [c.traverse(target,f) for c in self.subcans]
+        # the flatten logic is a little bit dirty
+        return list(flatten(l, lambda x:isinstance(x,list)))
+
+    # return weight tensors of current can and it's subcans
+    def get_weights(self):
+        return self.traverse('weights')
+
+    def get_biases(self):
+        return self.traverse('biases')
+
+    def get_only_weights(self): # dont get biases
+        return self.traverse('only_weights')
+
+    # return update operations of current can and it's subcans
+    def get_updates(self):
+        return self.traverse('updates')
+
+    # set __call__ function
+    def set_function(self,func):
+        self.func = func
+
+    # default __call__
+    def __call__(self,i,*args,**kwargs):
+        if hasattr(self,'func'):
+            return self.func(i,*args,**kwargs)
+        else:
+            raise NameError('You didnt override __call__(), nor called set_function()/chain()')
+
+    def get_value_of(self,tensors):
+        sess = get_session()
+        values = sess.run(tensors)
+        return values
+
+    def save_weights(self,filename): # save both weights and variables
+        with open(filename,'wb') as f:
+            # extract all weights in one go:
+            w = self.get_value_of(self.get_weights()+self.traverse('variables'))
+            print(len(w),'weights (and variables) obtained.')
+
+            # create an array object and put all the arrays into it.
+            # otherwise np.asanyarray() within np.savez_compressed()
+            # might make stupid mistakes
+            arrobj = np.empty([len(w)],dtype='object') # array object
+            for i in range(len(w)):
+                arrobj[i] = w[i]
+
+            np.savez_compressed(f,w=arrobj)
+            print('successfully saved to',filename)
+            return True
+
+    def load_weights(self,filename):
+        with open(filename,'rb') as f:
+            loaded_w = np.load(f)
+            print('successfully loaded from',filename)
+            if hasattr(loaded_w,'items'):
+                # compressed npz (newer)
+                loaded_w = loaded_w['w']
+            else:
+                # npy (older)
+                pass
+            # but we cannot assign all those weights in one go...
+            model_w = self.get_weights()+self.traverse('variables')
+            if len(loaded_w)!=len(model_w):
+                raise NameError('number of weights (variables) from the file({}) differ from the model({}).'.format(len(loaded_w),len(model_w)))
+            else:
+                assign_ops = [tf.assign(model_w[i],loaded_w[i])
+                    for i,_ in enumerate(model_w)]
+
+            sess = get_session()
+            sess.run(assign_ops)
+            print(len(loaded_w),'weights assigned.')
+            return True
+
+    def infer(self,i):
+        # run function, return value
+        if self.inference is None:
+            # the inference graph will be created when you infer for the first time
+            # 1. create placeholders with same dimensions as the input
+            if isinstance(i,list): # if Can accept more than one input
+                x = [tf.placeholder(tf.float32,shape=[None for _ in range(len(j.shape))])
+                    for j in i]
+                print('(infer) input is list.')
+            else:
+                x = tf.placeholder(tf.float32, shape=[None for _ in range(len(i.shape))])
+
+            # 2. set training state to false, construct the graph
+            set_training_state(False)
+            y = self.__call__(x)
+            set_training_state(True)
+
+            # 3. create the inference function
+            def inference(k):
+                sess = get_session()
+                if isinstance(i,list):
+                    res = sess.run([y],feed_dict={x[j]:k[j]
+                        for j,_ in enumerate(x)})[0]
+                else:
+                    res = sess.run([y],feed_dict={x:k})[0]
+                return res
+            self.inference = inference
+
+        return self.inference(i)
+
+    def summary(self):
+        print('-------------------')
+        print('Directly Trainable:')
+        variables_summary(self.get_weights())
+        print('-------------------')
+        print('Not Directly Trainable:')
+        variables_summary(self.traverse('variables'))
+        print('-------------------')
+
+def variables_summary(var_list):
+    shapes = [v.get_shape() for v in var_list]
+    shape_lists = [s.as_list() for s in shapes]
+    shape_lists = list(map(lambda x:''.join(map(lambda x:'{:>5}'.format(x),x)),shape_lists))
+
+    num_elements = [s.num_elements() for s in shapes]
+    total_num_of_variables = sum(num_elements)
+    names = [v.name for v in var_list]
+
+    print('counting variables...')
+    for i in range(len(shapes)):
+        print('{:>25}  ->  {:<6} {}'.format(
+        shape_lists[i],num_elements[i],names[i]))
+
+    print('{:>25}  ->  {:<6} {}'.format(
+    'tensors: '+str(len(shapes)),
+    str(total_num_of_variables),
+    'variables'))

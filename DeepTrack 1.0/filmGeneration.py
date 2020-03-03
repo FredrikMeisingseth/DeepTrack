@@ -85,7 +85,7 @@ def get_image_parameters_preconfig(image_size = 256):
         particle_intensities_list= lambda : particle_intensities_list,
         image_size=lambda : image_size,
         image_background_level=lambda : uniform(.2, .5),
-        signal_to_noise_ratio=lambda : uniform(0, 1),
+        signal_to_noise_ratio=lambda : 100,
         gradient_intensity=lambda : uniform(0.25, 0.75), 
         gradient_direction=lambda : uniform(-pi, pi),
         ellipsoidal_orientation=lambda : uniform(-pi, pi, particle_number), 
@@ -99,7 +99,7 @@ def get_image_parameters_film(image_parameters_prev, image_size = 256):
     from numpy.random import uniform, randint
     from math import pi, cos, sin
 
-    max_move = 20
+    max_move = 10
     particle_centers = []
     for (radius, x, y, index) in zip(image_parameters_prev['Particle Radius List'],
                              image_parameters_prev['Particle Center X List'],

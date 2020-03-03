@@ -69,11 +69,11 @@ def sort_particles(coord_batch, max_dist=100):
     from numpy import zeros, delete
 
     track_batch = []
-    track_batch_temp = [[coord] for coord in coord_batch[0]]
+    track_batch_temp = [[0, coord] for coord in coord_batch[0]]
     
     coord_list_prev = coord_batch[0]
 
-    for coord_list in coord_batch[1:]:
+    for frame_number, coord_list in enumerate(coord_batch[1:]):
         dist_matrix = zeros((len(coord_list), len(coord_list_prev)))
         matching_prev = zeros(len(coord_list_prev),dtype=bool) #Keep track of old coords without matching new coords -> Ending track
         matching_new = zeros(len(coord_list), dtype=bool) #Keep track of new coords without matching old -> Starting track
@@ -99,7 +99,7 @@ def sort_particles(coord_batch, max_dist=100):
         new_coords = []
         for match, index in zip(matching_new, range(len(coord_list))):
             if not match:
-                track_batch_temp.append([])
+                track_batch_temp.append([frame_number])
                 new_coords.append(coord_list.pop(index-len(new_coords)))
                 dist_matrix = delete(dist_matrix,index-len(new_coords),0)
             #If there is no previous matching coordinate, append that track to temp tracks, move element last in coord_list
@@ -108,7 +108,7 @@ def sort_particles(coord_batch, max_dist=100):
 
         coord_list = [coord_list[index] for index in col_index]
         coord_list.extend(new_coords)
-
+        
         for track, coord in zip(track_batch_temp, coord_list):
             track.append(coord)
         
