@@ -62,21 +62,23 @@ def get_cost_matrix(coord_list, old_coord_list):
 def sort_particles(coord_batch, max_dist=100):
     #Takes cooridnates predicted from a batch and sorts them into a list of tracks containing all coordinate pairs belonging to that track in order of time.
     #Input: cooridnate batch: [[coord_list1]...[coord_listn]]
-    #Output: track batch: []
+    #Output: track batch: [track_1,track_2...] where track_n is a dictionary with three fields: start_frame, coordinates and particle_id
     #Invariant: index of coordinate_lists and matching lists should always match index of track_batch_temp
 
     from scipy.optimize import linear_sum_assignment
-    from numpy import zeros, delete
+    from numpy import zeros, delete, pad
 
     track_batch = []
-    track_batch_temp = [[0, coord] for coord in coord_batch[0]]
+    track_batch_temp = [{'start_frame': 0,
+                        'particle_id': particle_id,
+                        'coordinates': [coord]} for particle_id, coord in enumerate(coord_batch[0])]
     
     coord_list_prev = coord_batch[0]
+    particle_id=len(coord_batch[0])
 
     for frame_number, coord_list in enumerate(coord_batch[1:]):
         dist_matrix = zeros((len(coord_list), len(coord_list_prev)))
         matching_prev = zeros(len(coord_list_prev),dtype=bool) #Keep track of old coords without matching new coords -> Ending track
-        matching_new = zeros(len(coord_list), dtype=bool) #Keep track of new coords without matching old -> Starting track
 
         for i in range(len(coord_list)):
             for j in range(len(coord_list_prev)):
@@ -85,7 +87,6 @@ def sort_particles(coord_batch, max_dist=100):
                 
                 if dist<max_dist:
                     matching_prev[j]=True
-                    matching_new[i]=True
 
         deleted_coords=0
         for match, index in zip(matching_prev, range(len(coord_list_prev))):
@@ -96,21 +97,21 @@ def sort_particles(coord_batch, max_dist=100):
 
             #If there is no new matching coordinate, move that track from the temp tracks to tracks, remove column from dist_matrix
 
-        new_coords = []
-        for match, index in zip(matching_new, range(len(coord_list))):
-            if not match:
-                track_batch_temp.append([frame_number])
-                new_coords.append(coord_list.pop(index-len(new_coords)))
-                dist_matrix = delete(dist_matrix,index-len(new_coords),0)
-            #If there is no previous matching coordinate, append that track to temp tracks, move element last in coord_list
+        (row_len, column_len) = dist_matrix.shape
+        number_of_new_particles= max([0,row_len-column_len])
+        dist_matrix = pad(dist_matrix, ((0,0),(0,number_of_new_particles)))        
+        for j in range(number_of_new_particles):
+            track_batch_temp.append({'start_frame': frame_number,
+                                    'particle_id': particle_id,
+                                    'coordinates':[]})
+            particle_id = particle_id+1
 
         (row_index,col_index) = linear_sum_assignment(dist_matrix)
 
         coord_list = [coord_list[index] for index in col_index]
-        coord_list.extend(new_coords)
         
         for track, coord in zip(track_batch_temp, coord_list):
-            track.append(coord)
+            track['coordinates'].append(coord)
         
         coord_list_prev = coord_list
 
