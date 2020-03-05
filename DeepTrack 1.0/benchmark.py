@@ -107,7 +107,7 @@ def sort_particles(coord_batch, max_dist=100):
             particle_id = particle_id+1
 
         (row_index,col_index) = linear_sum_assignment(dist_matrix)
-
+        print('ROW: ', len(row_index), ' COL: ', len(col_index), 'COORD: ', len(coord_list))
         coord_list = [coord_list[index] for index in col_index]
         
         for track, coord in zip(track_batch_temp, coord_list):

@@ -4,6 +4,8 @@ def get_image_parameters(
     particle_radius_list=lambda : [3, ], 
     particle_bessel_orders_list=lambda : [[1, ], ], 
     particle_intensities_list=lambda : [[.5, ], ],
+    particle_speed_list = lambda : [10, ],
+    particle_direction_list = lambda : [0, ],
     image_size=lambda : 128, 
     image_background_level=lambda : .5,
     signal_to_noise_ratio=lambda : 30,
@@ -52,6 +54,8 @@ def get_image_parameters(
     image_parameters['Particle Radius List'] = particle_radius_list()
     image_parameters['Particle Bessel Orders List'] = particle_bessel_orders_list()
     image_parameters['Particle Intensities List'] = particle_intensities_list()
+    image_parameters['Particle Speed List'] = particle_speed_list()
+    image_parameters['Particle Direction List'] = particle_direction_list()
     image_parameters['Image Size'] = image_size()
     image_parameters['Image Background Level'] = image_background_level()
     image_parameters['Signal to Noise Ratio'] = signal_to_noise_ratio()
@@ -63,19 +67,18 @@ def get_image_parameters(
     return image_parameters
 
 def get_image_parameters_preconfig(image_size = 256):
-
     from numpy.random import uniform, randint
     from math import pi
 
     particle_number= randint(5, 6)
-    particle_radius_list = uniform(0.25, 3, particle_number)
+    particle_radius_list = list(uniform(0.25, 3, particle_number))
     (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list,image_size)
-
+   
     particle_bessel_orders_list= []
     particle_intensities_list= []
     for i in range(particle_number):
         particle_bessel_orders_list.append([1,])
-        particle_intensities_list.append([uniform(0.1,0.5,1),])
+        particle_intensities_list.append([uniform(0.1,0.5),])
 
     image_parameters = get_image_parameters(
         particle_center_x_list= lambda : particle_center_x_list, 
@@ -83,43 +86,46 @@ def get_image_parameters_preconfig(image_size = 256):
         particle_radius_list=lambda : particle_radius_list,
         particle_bessel_orders_list= lambda:  particle_bessel_orders_list,
         particle_intensities_list= lambda : particle_intensities_list,
+        particle_speed_list= lambda : list(uniform(1,5,particle_number)),
+        particle_direction_list= lambda : list(uniform(pi*0.9,pi*1.1,particle_number)),
         image_size=lambda : image_size,
         image_background_level=lambda : uniform(.2, .5),
         signal_to_noise_ratio=lambda : 100,
         gradient_intensity=lambda : uniform(0.25, 0.75), 
         gradient_direction=lambda : uniform(-pi, pi),
-        ellipsoidal_orientation=lambda : uniform(-pi, pi, particle_number), 
+        ellipsoidal_orientation=lambda : list(uniform(-pi, pi, particle_number)), 
         ellipticity= lambda: 1)
 
     return image_parameters
 
-
 def get_image_parameters_film(image_parameters_prev, image_size = 256):
-    from numpy import reshape, delete
     from numpy.random import uniform, randint
     from math import pi, cos, sin
 
     max_move = 10
     particle_centers = []
-    for (radius, x, y, index) in zip(image_parameters_prev['Particle Radius List'],
+    for (radius, x, y, speed, direction, index) in zip(image_parameters_prev['Particle Radius List'],
                              image_parameters_prev['Particle Center X List'],
                              image_parameters_prev['Particle Center Y List'],
+                             image_parameters_prev['Particle Speed List'],
+                             image_parameters_prev['Particle Direction List'],
                              range(len(image_parameters_prev['Particle Radius List']))):
 
         for i in range(100):
-            r = uniform(0, max_move)
+            r = 0#uniform(0, max_move)
             theta = uniform(0, 2*pi)
-            (x_new, y_new) = (x+r*cos(theta), y+r*sin(theta))
+            (x_new, y_new) = (x+r*cos(theta)+speed*cos(direction), y+r*sin(theta)+speed*sin(direction))
             if all(((x_new - coord[0]) ** 2 + (y_new - coord[1]) ** 2) ** 0.5 > radius for coord in particle_centers):
                 if (not (radius < x_new < image_size-radius)) or (not (radius < y_new < image_size-radius)):
-                    delete(image_parameters_prev['Particle Radius List'], index)
-                    delete(image_parameters_prev['Particle Bessel Orders List'], index)
-                    delete(image_parameters_prev['Particle Intensities List'], index)          
+                    del image_parameters_prev['Particle Radius List'][index]
+                    del image_parameters_prev['Particle Bessel Orders List'][index]
+                    del image_parameters_prev['Particle Intensities List'][index]
                 else:
                     particle_centers.append([x_new, y_new])
                 break
             elif i==99:
                 raise Exception("Couldn't place out another particle after 100 tries")
+    
     particle_centers_x=[]
     particle_centers_y=[]
     for coordinates in particle_centers:
@@ -129,6 +135,15 @@ def get_image_parameters_film(image_parameters_prev, image_size = 256):
     image_parameters_prev['Particle Center X List'] = particle_centers_x
     image_parameters_prev['Particle Center Y List'] = particle_centers_y
 
+    if uniform(0,1) < 0.5:
+        image_parameters_prev['Particle Center X List'].append(image_size-10)
+        image_parameters_prev['Particle Center Y List'].append(uniform(10,image_size))
+        image_parameters_prev['Particle Radius List'].append(uniform(0.25,3))
+        image_parameters_prev['Particle Bessel Orders List'].append([1,])
+        image_parameters_prev['Particle Intensities List'].append([uniform(0.1,0.5),])
+        image_parameters_prev['Particle Speed List'].append(uniform(1,5))
+        image_parameters_prev['Particle Direction List'].append(uniform(pi*0.9,pi*1.1))  
+        image_parameters_prev['Ellipsoid Orientation'].append(uniform(-pi,pi))
     return image_parameters_prev
 
 def get_aug_parameters():
@@ -273,49 +288,6 @@ def get_image(image_parameters, use_gpu=False):
     image_particles_with_noise = poisson(image_particles_without_noise * signal_to_noise_ratio**2) / signal_to_noise_ratio**2
 
     return image_particles_with_noise
-
-# def calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list):
-#     from numba import cuda
-#     from math import ceil,exp
-
-
-#     # the cuda kernel calculating the value of the Gauss function for each pixel in out image
-#     @cuda.jit
-#     def part_prof(d_dist_x,d_dist_y,d_radiuses,d_img_part,d_particle_intensities):
-
-#         x, y = cuda.grid(2)
-
-#         if x >= d_img_part.shape[0] and y >= d_img_part.shape[1]:
-#             # Quit if (x, y) is outside of valid C boundary
-#             return
-
-#         for i in range(d_dist_x.shape[0]):
-
-#             tmp = d_particle_intensities[i][0][0]*exp(-((x-d_dist_x[i])**2/(2*d_radiuses[i]**2) + (y-d_dist_y[i])**2/(2*d_radiuses[i]**2)))
-
-#             d_img_part[x, y] = d_img_part[x,y] + tmp
-
-#     # define threads per block and blocks per grid. This dictates how our cuda kernel devides tasks.
-#     TPB = 32
-#     threadsperblock = (TPB, TPB)
-#     blockspergrid_x = int(ceil(image_particles.shape[0] / threadsperblock[0]))
-#     blockspergrid_y = int(ceil(image_particles.shape[1] / threadsperblock[1]))
-#     blockspergrid = (blockspergrid_x, blockspergrid_y)
-    
-#     # introduce stream dictating the order of data being sent to GPU
-#     # create an cuda object of each object we wish to have handled by the GPU. This is because data transfer to and from GPU is costly.
-#     stream = cuda.stream()
-#     d_pos_x = cuda.to_device(particle_center_x_list,stream = stream)
-#     d_pos_y = cuda.to_device(particle_center_y_list,stream = stream)
-#     d_radiuses = cuda.to_device(particle_radius_list,stream = stream)
-#     d_img_part = cuda.to_device(image_particles,stream = stream)
-#     d_particle_intensities = cuda.to_device(particle_intensities_list,stream = stream)
-
-#     # call the cuda kernel
-#     part_prof[blockspergrid, threadsperblock](d_pos_x,d_pos_y,d_radiuses, d_img_part,d_particle_intensities)
-
-#     # retrieve our image particle matrix from GPU
-#     d_img_part.copy_to_host(image_particles, stream = stream)
 
 def draw_image(img):
     from matplotlib import pyplot as plt
@@ -605,8 +577,6 @@ def get_particle_centers(label):
 
     return (x_mean_list, y_mean_list)
 
-
-
 def get_particle_centers(label):
     from skimage import measure
     from statistics import mean
@@ -625,7 +595,6 @@ def get_particle_centers(label):
         x_mean_list.append(mean(x_list))
         y_mean_list.append(mean(y_list))
     return (x_mean_list, y_mean_list)
-
 
 def get_particle_centers_pairs(label): #Returns on form [[x1,y1],[x2,y2]...]
     from skimage import measure

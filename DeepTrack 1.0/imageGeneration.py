@@ -1,6 +1,5 @@
 import keras
 
-
 def get_image_parameters(
     particle_center_x_list=lambda : [0, ], 
     particle_center_y_list=lambda : [0, ], 
@@ -625,7 +624,6 @@ def get_particle_centers(label):
         x_mean_list.append(mean(x_list))
         y_mean_list.append(mean(y_list))
     return (x_mean_list, y_mean_list)
-
 
 def get_particle_centers_pairs(label): #Returns on form [[x1,y1],[x2,y2]...]
     from skimage import measure
