@@ -85,8 +85,8 @@ def get_image_parameters_preconfig(image_size=256):
         particle_intensities_list=lambda: particle_intensities_list,
         image_size=lambda: image_size,
         image_background_level=lambda: uniform(.2, .5),
-        signal_to_noise_ratio=lambda: uniform(2, 10),
-        gradient_intensity=lambda: uniform(0.25, 0.75),
+        signal_to_noise_ratio=lambda: uniform(2, 5),
+        gradient_intensity=lambda: uniform(0, 0.2),
         gradient_direction=lambda: uniform(-pi, pi),
         ellipsoidal_orientation=lambda: uniform(-pi, pi, particle_number),
         ellipticity=lambda: 1)
@@ -243,8 +243,9 @@ def get_image(image_parameters, use_gpu=False):
 
     #print("Before poisson: Min is %.4f, Max is %.4f" % (np.amin(image_particles_without_noise), np.amax(image_particles_without_noise)))
 
-    image_particles_with_noise = poisson(
-        image_particles_without_noise * signal_to_noise_ratio ** 2) / signal_to_noise_ratio ** 2
+    image_particles_with_noise = clip(poisson(
+        image_particles_without_noise * signal_to_noise_ratio ** 2) / signal_to_noise_ratio ** 2,
+                                      0, 1)
 
     #print("After poisson: Min is %.4f, Max is %.4f" % (np.amin(image_particles_with_noise), np.amax(image_particles_with_noise)))
 
