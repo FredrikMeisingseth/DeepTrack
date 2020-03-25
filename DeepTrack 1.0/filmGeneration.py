@@ -73,15 +73,15 @@ def get_image_parameters_preconfig(image_size = 256):
     particle_number= randint(5, 6)
     particle_radius_list = list(uniform(0.25, 3, particle_number))
     (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list,image_size)
-
-    particle_bessel_orders_list = []
-    particle_intensities_list = []
+   
+    particle_bessel_orders_list= []
+    particle_intensities_list= []
     for i in range(particle_number):
         particle_bessel_orders_list.append([1,])
         particle_intensities_list.append([uniform(0.1,0.5),])
 
     image_parameters = get_image_parameters(
-        particle_center_x_list= lambda : particle_center_x_list,
+        particle_center_x_list= lambda : particle_center_x_list, 
         particle_center_y_list= lambda : particle_center_y_list,
         particle_radius_list=lambda : particle_radius_list,
         particle_bessel_orders_list= lambda:  particle_bessel_orders_list,
@@ -91,9 +91,9 @@ def get_image_parameters_preconfig(image_size = 256):
         image_size=lambda : image_size,
         image_background_level=lambda : uniform(.2, .5),
         signal_to_noise_ratio=lambda : 100,
-        gradient_intensity=lambda : uniform(0.25, 0.75),
+        gradient_intensity=lambda : uniform(0.25, 0.75), 
         gradient_direction=lambda : uniform(-pi, pi),
-        ellipsoidal_orientation=lambda : list(uniform(-pi, pi, particle_number)),
+        ellipsoidal_orientation=lambda : list(uniform(-pi, pi, particle_number)), 
         ellipticity= lambda: 1)
 
     return image_parameters
@@ -120,10 +120,13 @@ def get_image_parameters_film(image_parameters_prev, image_size = 256):
                     del image_parameters_prev['Particle Radius List'][index]
                     del image_parameters_prev['Particle Bessel Orders List'][index]
                     del image_parameters_prev['Particle Intensities List'][index]
+                    del image_parameters_prev['Particle Speed List'][index]
+                    del image_parameters_prev['Particle Direction List'][index]
+                    del image_parameters_prev['Ellipsoid Orientation'][index]
                 else:
                     particle_centers.append([x_new, y_new])
                 break
-            elif i==100:
+            elif i==99:
                 raise Exception("Couldn't place out another particle after 100 tries")
     
     particle_centers_x=[]
@@ -391,8 +394,8 @@ def get_label(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
         """
         for pixel_x in range(int(np.floor(center_x - radius)), int(np.ceil(center_x + radius))):
             for pixel_y in range(int(np.floor(center_y - radius)), int(np.ceil(center_y + radius))):
-                if ((pixel_x - center_x) ** 2 + (pixel_y - center_y) ** 2 <= radius ** 2):
-                    print('Pixel_x is: ' + str(pixel_x) + ". Pixel_y is: " + str(pixel_y) + ".")
+                if ((pixel_x - center_x) ** 2 + (pixel_y - center_y) ** 2 <= radius ** 2) and 0 <= pixel_x <= image_size-1 and 0 <= pixel_y <= image_size-1:
+                    # print('Pixel_x is: ' + str(pixel_x) + ". Pixel_y is: " + str(pixel_y) + ".")
                     targetBinaryImage[pixel_x, pixel_y, 0] = 1
                     targetBinaryImage[pixel_x, pixel_y, 1] = center_x - pixel_x
                     targetBinaryImage[pixel_x, pixel_y, 2] = center_y - pixel_y
@@ -435,8 +438,24 @@ def get_label_old(image_parameters=get_image_parameters_preconfig(), use_gpu=Fal
 
         return targetBinaryImage
 
-def get_batch(get_image_parameters = lambda prev: get_image_parameters_film(prev),
-              batch_size=32, 
+def get_batch(batch_size=32):
+    import numpy as np
+    film_batch = []
+    label_batch = []
+    for i in range(batch_size):
+        (film, labels) = get_film()
+        film_batch.append(film)
+        label_batch.append(labels[-1])
+    
+    print(np.shape(film_batch))
+    print(np.shape(label_batch))
+    label_batch = np.reshape(label_batch, (32,1,256,256,5))
+    print(np.shape(label_batch))
+
+    return (film_batch, label_batch)
+
+def get_film(get_image_parameters = lambda prev: get_image_parameters_film(prev),
+              batch_size=4, 
               use_gpu=False, 
               return_image_parameters=False):
     
@@ -603,14 +622,62 @@ def get_particle_centers_pairs(label): #Returns on form [[x1,y1],[x2,y2]...]
     (label_id, number_of_particles) = measure.label(label[:,:,0], return_num=True)
     #Bra namn
     particle_centers =[]
+    mean_radius = []
     for particle_id in range(1,number_of_particles+1):
         x_list=[]
         y_list=[]
+        radius_list =[]
         coords = argwhere(label_id==particle_id)
         for coord in coords:
             x_list.append(coord[0]+label[coord[0],coord[1],1])
             y_list.append(coord[1]+label[coord[0],coord[1],2])
-
+            radius_list.append(label[coord[0],coord[1],3])
         particle_centers.append([mean(x_list),mean(y_list)])
+        mean_radius.append(mean(radius_list))
+        
+    return particle_centers, mean_radius
 
-    return particle_centers
+
+from keras.utils import Sequence
+
+class DataGenerator(Sequence):
+    """
+    At the beginning of each epoch, generates a batch of size epoch_batch_size using get_image_parameters and use_GPU. Then,
+    for each step, outputs a batch of size batch_size. This is done at most len times.
+    """
+    def __init__(self,
+                 get_image_parameters = lambda: get_image_parameters_film(),
+                 epoch_batch_size = 1000,
+                 use_GPU = False,
+                 batch_size = 32,
+                 len = 100):
+        'Initialization'
+        self.get_image_parameters = get_image_parameters
+        self.epoch_batch_size = epoch_batch_size
+        self.use_GPU = use_GPU
+        #self.batch = get_batch(get_image_parameters, epoch_batch_size, use_GPU)
+        self.on_epoch_end()
+        self.len = len
+        self.batch_size = batch_size
+
+    def on_epoch_end(self):
+        self.batch = get_batch()
+        image_batch, label_batch = self.batch
+        from matplotlib import pyplot as plt
+        # plt.imshow(image_batch[0,:,:,0], cmap = 'gray')
+        # plt.show()
+        # plt.imshow(label_batch[0,:,:,0], cmap = 'gray')
+        # plt.show()
+
+    def __len__(self):
+
+        return(self.len)
+
+    def __getitem__(self, index):
+        from random import randint
+        import numpy as np
+        #image_indices = [randint(0,self.epoch_batch_size-1) for i in range(self.batch_size)]
+        image_batch, label_batch = self.batch
+        ret1 = [image_batch[randint(0,5)] for i in range(self.batch_size)]
+        ret2 = [label_batch[randint(0,5)] for i in range(self.batch_size)]
+        return np.asarray(ret1), np.asarray(ret2)
