@@ -69,7 +69,7 @@ def get_image_parameters_preconfig(image_size=256):
     from math import pi
 
     particle_number = randint(10, 30)
-    particle_radius_list = uniform(0.5, 4, particle_number)
+    particle_radius_list = uniform(0.5, 2, particle_number)
     (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list, image_size)
 
     particle_bessel_orders_list = []
@@ -87,7 +87,7 @@ def get_image_parameters_preconfig(image_size=256):
         particle_intensities_list=lambda: particle_intensities_list,
         image_size=lambda: image_size,
         image_background_level=lambda: uniform(.3, .5),
-        signal_to_noise_ratio=lambda: uniform(4, 24),
+        signal_to_noise_ratio=lambda: 50,
         gradient_intensity=lambda: uniform(0, 0.1),
         gradient_direction=lambda: uniform(-pi, pi),
         ellipsoidal_orientation=lambda: uniform(-pi, pi, particle_number),
@@ -165,10 +165,11 @@ def get_image(image_parameters):
     image: image of the particle [2D numpy array of real numbers betwen 0 and 1]
     """
 
-    from numpy import meshgrid, arange, ones, zeros, sin, cos, sqrt, clip, array, ceil, mean, amax, asarray, multiply
-    from numpy.random import normal
+    from numpy import meshgrid, arange, ones, zeros, sin, cos, sqrt, clip, array, ceil, mean, amax, asarray, amin
+    from numpy.random import normal, poisson
     from math import e
     from scipy.special import jv as bessel
+    import warnings
 
     particle_center_x_list = image_parameters['Particle Center X List']
     particle_center_y_list = image_parameters['Particle Center Y List']
@@ -240,71 +241,40 @@ def get_image(image_parameters):
             image_particles[start_x:stop_x, start_y:stop_y] = image_particles[start_x:stop_x,
                                                               start_y:stop_y] + particle_intensity * image_particle
 
-        # saves the maximum intensity of the particle
-        particle_intensities_for_SNR.append(amax(image_particles[start_x:stop_x, start_y:stop_y]))
-
     # calculate image without noise as background image plus particle image
     image_particles_without_noise = clip(image_background + image_particles, 0, 1)
 
     ### ADD NOISE
-    # calculate RMS of particles (signals) by assuming normal distribution. Then the RMS for each particle is simply the
-    # standard deviation of the distribution, which in turn is the maximum value divided by the square root of e. This
-    # doesn't take into account the discrete nature of the pixel, ie. we assume that the maximum pixel intensity in a
-    # particle is the maximum of the normal distribution. To calculate the RMS of all the particles, we just take the
-    # RMS of each particles RMS
-    signal_RMS = (mean((multiply(particle_intensities_for_SNR, e ** (-1 / 2)) ** 2))) ** (1 / 2)
+    image_particles_with_noise = poisson(
+        image_particles_without_noise * signal_to_noise_ratio ** 2) / signal_to_noise_ratio ** 2
 
-    # the RMS of the noise is the RMS of the particles divided by the square root of SNR
-    noise_RMS = signal_RMS * (signal_to_noise_ratio ** (-1 / 2))
+    cut_off_pixels = tuple([image_particles_with_noise > 1])
 
-    # the noise image is then calculated using a normal distribution with mean 0 and standard deviation noise_RMS
-    noise = normal(0, noise_RMS, (image_size, image_size))
+    percentage_of_pixels_that_were_cut_off = image_particles_with_noise[cut_off_pixels].size / (image_size ** 2) * 100
 
+    # warn if there is a pixel brighter than 1
+    def custom_formatwarning(msg, *args, **kwargs):
+        # ignore everything except the message
+        return str(msg) + '\n'
 
-    # print("Before poisson: Min is %.4f, Max is %.4f" % (np.amin(image_particles_without_noise),
-    # np.amax(image_particles_without_noise)))
+    if percentage_of_pixels_that_were_cut_off > 0:
+        warnings.formatwarning = custom_formatwarning
+        warn_message = ("Warning: %.5f%% of the pixels in the generated image are brighter than the 1 (%d pixels)! "
+                        "These were cut-off to the max value 1. Consider adjusting your gradient intensity, particle "
+                        "intensity, background level, or signal to noise ratio." % (
+                            percentage_of_pixels_that_were_cut_off, image_particles_with_noise[cut_off_pixels].size))
+        warnings.warn(warn_message)
 
-    image_particles_with_noise = clip(image_particles_without_noise + noise, 0, 1)
+    # print("After poisson: Min is %.4f, Max is %.4f" % (amin(image_particles_with_noise),
+    #                                                    amax(image_particles_with_noise)))
 
-    # print("After poisson: Min is %.4f, Max is %.4f" % (np.amin(image_particles_with_noise),
-    # np.amax(image_particles_with_noise)))
-
-    return image_particles_with_noise
+    return clip(image_particles_with_noise, 0, 1)
 
 
 def draw_image(img):
     from matplotlib import pyplot as plt
     plt.imshow(img, cmap='gray')
     plt.show()
-
-
-def plot_sample_image(image_parameters, image=None, figsize=(15, 5)):
-    """
-    Plot a sample image.
-
-    Inputs:
-    image: image of the particles
-    image_parameters: list with the values of the image parameters
-    figsize: figure size [list of two positive numbers]
-    """
-
-    ### CALCULATE BACKGROUND
-    # initialize the image at the background level
-
-    particle_center_x_list = image_parameters['Particle Center X List']
-    particle_center_y_list = image_parameters['Particle Center Y List']
-    particle_radius_list = image_parameters['Particle Radius List']
-    particle_bessel_orders_list = image_parameters['Particle Bessel Orders List']
-    particle_intensities_list = image_parameters['Particle Intensities List']
-    image_size = image_parameters['Image Size']
-    image_background_level = image_parameters['Image Background Level']
-    signal_to_noise_ratio = image_parameters['Signal to Noise Ratio']
-    gradient_intensity = image_parameters['Gradient Intensity']
-    gradient_direction = image_parameters['Gradient Direction']
-    ellipsoidal_orientation_list = image_parameters['Ellipsoid Orientation']
-    ellipticity = image_parameters['Ellipticity']
-
-    return
 
 
 def get_label(image_parameters=get_image_parameters_preconfig()):
@@ -326,30 +296,27 @@ def get_label(image_parameters=get_image_parameters_preconfig()):
     image_size = image_parameters['Image Size']
     particle_intensities_list = image_parameters['Particle Intensities List']
 
-    targetBinaryImage = np.zeros((image_size, image_size, 5))
+    target_binary_image = np.zeros((image_size, image_size, 5))
 
     for particle_index in range(0, len(particle_center_x_list)):
         center_x = particle_center_x_list[particle_index]
         center_y = particle_center_y_list[particle_index]
         radius = particle_radius_list[particle_index]
         intensity = particle_intensities_list[particle_index]
-        # print('Center_x is: ' + str(center_x) + ". Center_y is: " + str(center_y) + ". Radius is: " + str(radius) + ".")
 
-        """Loops over all pixels with center in coordinates = [ceil(center - radius): floor(center + radius)]. Adds the ones with
-        center within radius.
-        """
+        # loops over all pixels with center in coordinates = [ceil(center - radius): floor(center + radius)]. Adds the ones with
+        # center within radius.
         for pixel_x in range(int(np.floor(center_x - radius)), int(np.ceil(center_x + radius))):
             for pixel_y in range(int(np.floor(center_y - radius)), int(np.ceil(center_y + radius))):
                 if ((pixel_x - center_x) ** 2 + (pixel_y - center_y) ** 2 <= radius ** 2):
                     # print('Pixel_x is: ' + str(pixel_x) + ". Pixel_y is: " + str(pixel_y) + ".")
-                    targetBinaryImage[pixel_x, pixel_y, 0] = 1
-                    targetBinaryImage[pixel_x, pixel_y, 1] = center_x - pixel_x
-                    targetBinaryImage[pixel_x, pixel_y, 2] = center_y - pixel_y
-                    # print('X vector is: ' + str(targetBinaryImage[pixel_x, pixel_y, 1]) + '. Y vector is: ' + str(targetBinaryImage[pixel_x, pixel_y, 2] ))
-                    targetBinaryImage[pixel_x, pixel_y, 3] = radius
-                    targetBinaryImage[pixel_x, pixel_y, 4] = intensity[0]
+                    target_binary_image[pixel_x, pixel_y, 0] = 1
+                    target_binary_image[pixel_x, pixel_y, 1] = center_x - pixel_x
+                    target_binary_image[pixel_x, pixel_y, 2] = center_y - pixel_y
+                    target_binary_image[pixel_x, pixel_y, 3] = radius
+                    target_binary_image[pixel_x, pixel_y, 4] = intensity[0]
 
-    return targetBinaryImage
+    return target_binary_image
 
 
 def get_batch(get_image_parameters=lambda: get_image_parameters_preconfig(),
@@ -374,25 +341,32 @@ def get_batch(get_image_parameters=lambda: get_image_parameters_preconfig(),
 
     print("Time taken for batch generation of size " + str(batch_size) + ": " + str(time_taken) + " s.")
 
-    return (image_batch, label_batch)
+    return image_batch, label_batch
 
 
-def save_batch(batch, label_path='data', image_path='data', image_filename='image', label_filename='label'):
-    from skimage.io import imsave
+def save_batch(batch, image_path='data', label_path='data', image_filename='image', label_filename='label'):
+    import cv2
     import numpy as np
+    import os
 
     (image_batch, label_batch) = batch
     (batch_size) = image_batch.shape[0]
+    if not os.path.isdir(image_path):
+        os.mkdir(image_path)
+        print("Created path " + image_path)
+    if not os.path.isdir(label_path):
+        os.mkdir(label_path)
+        print("Created path " + label_path)
 
     for i in range(batch_size):
-        image = image_batch[i]
-        print("Min is %.4f, Max is %.4f" % (np.amin(image), np.amax(image)))
-        imsave("%s/%s%d.png" % (image_path, image_filename, i), image_batch[i])
-        # np.save("%s/%s%d" % (label_path, label_filename, i), label_batch[i])
+        image = (image_batch[i] * 255).astype(np.uint8)
+        cv2.imwrite("%s/%s%d.png" % (image_path, image_filename, i), image)
+        np.save("%s/%s%d" % (label_path, label_filename, i), label_batch[i])
+
     return
 
 
-def load_batch(batch_size, label_path='data', image_path='data', image_filename='image', label_filename='label'):
+def load_batch(batch_size, image_path='data', label_path='data', image_filename='image', label_filename='label'):
     from skimage.io import imread
     import numpy as np
 
@@ -402,10 +376,10 @@ def load_batch(batch_size, label_path='data', image_path='data', image_filename=
     label_batch = np.zeros((batch_size,) + label_shape)
 
     for j in range(batch_size):
-        image_batch[j, :, :, 0] = imread("%s/%s%d.png" % (image_path, image_filename, j))
+        image_batch[j, :, :, 0] = imread("%s/%s%d.png" % (image_path, image_filename, j))/255
         label_batch[j] = np.load("%s/%s%d.npy" % (label_path, label_filename, j))
 
-    return (image_batch, label_batch)
+    return image_batch, label_batch
 
 
 def generator_for_training(get_batch=lambda: get_batch(), aug_parameters=get_aug_parameters()):
