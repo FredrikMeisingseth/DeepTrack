@@ -72,10 +72,10 @@ def get_image_parameters_preconfig(image_size=256):
     particle_radius_list = uniform(1, 2, particle_number)
     (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list, image_size)
 
-    #particle_bessel_orders_list = []
-    #particle_intensities_list = []
+    # particle_bessel_orders_list = []
+    # particle_intensities_list = []
 
-    #for i in range(particle_number):
+    # for i in range(particle_number):
     #    particle_bessel_orders_list.append([1, ])
     #    particle_intensities_list.append([uniform(0.1, 0.15, 1), ])
 
@@ -83,8 +83,8 @@ def get_image_parameters_preconfig(image_size=256):
         particle_center_x_list=lambda: particle_center_x_list,
         particle_center_y_list=lambda: particle_center_y_list,
         particle_radius_list=lambda: particle_radius_list,
-        particle_bessel_order_list=lambda: ones(particle_number),#particle_bessel_orders_list,
-        particle_intensity_list=lambda: uniform(0.1,0.15,particle_number),#particle_intensities_list,
+        particle_bessel_order_list=lambda: ones(particle_number),  # particle_bessel_orders_list,
+        particle_intensity_list=lambda: uniform(0.1, 0.15, particle_number),  # particle_intensities_list,
         image_size=lambda: image_size,
         image_background_level=lambda: uniform(.3, .5),
         signal_to_noise_ratio=lambda: uniform(10, 11),
@@ -142,7 +142,7 @@ def get_particle_positions(particle_radius_list=[], image_size=128):
     return (particle_centers_x, particle_centers_y)
 
 
-def get_image(image_parameters, use_gpu=False):
+def get_image(image_parameters):
     """Generate image with particles.
     Input:
     image_parameters: list with the values of the image parameters in a dictionary:
@@ -165,8 +165,9 @@ def get_image(image_parameters, use_gpu=False):
     image: image of the particle [2D numpy array of real numbers betwen 0 and 1]
     """
 
-    from numpy import meshgrid, arange, ones, zeros, sin, cos, sqrt, clip, array
-    from numpy.random import poisson as poisson
+    from numpy import meshgrid, arange, ones, zeros, sin, cos, sqrt, clip, array, ceil, mean
+    from numpy.random import normal
+    from math import e
 
     particle_center_x_list = image_parameters['Particle Center X List']
     particle_center_y_list = image_parameters['Particle Center Y List']
@@ -192,122 +193,75 @@ def get_image(image_parameters, use_gpu=False):
                                                       indexing='ij')
 
     # add gradient to image background
-    if gradient_intensity != 0:
-        image_background = image_background + gradient_intensity * (image_coordinate_x * sin(gradient_direction) +
-                                                                    image_coordinate_y * cos(gradient_direction)) / (
-                                       sqrt(2) * image_size)
+    image_background = image_background + gradient_intensity * (image_coordinate_x * sin(gradient_direction) +
+                                                                image_coordinate_y * cos(gradient_direction)) / (
+                               sqrt(2) * image_size)
 
     ### CALCULATE IMAGE PARTICLES
     image_particles = zeros((image_size, image_size))
 
     # calculate the particle profiles of all particles and add them to image_particles
-    if (use_gpu):
-        calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list, particle_radius_list, image_particles,
-                                  particle_intensity_list)
-    else:
-        from scipy.special import jv as bessel
+    from scipy.special import jv as bessel
 
-        for particle_center_x, particle_center_y, particle_radius, particle_bessel_order, particle_intensity, ellipsoidal_orientation in zip(
-                particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_order_list,
-                particle_intensity_list, ellipsoidal_orientation_list):
+    for particle_center_x, particle_center_y, particle_radius, particle_bessel_order, particle_intensity, ellipsoidal_orientation in zip(
+            particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_order_list,
+            particle_intensity_list, ellipsoidal_orientation_list):
+        # calculate coordinates of cutoff window
+        start_x = int(max(ceil(particle_center_x - particle_radius * 3), 0))
+        stop_x = int(min(ceil(particle_center_x + particle_radius * 3), image_size))
+        start_y = int(max(ceil(particle_center_y - particle_radius * 3), 0))
+        stop_y = int(min(ceil(particle_center_y + particle_radius * 3), image_size))
 
-        # for particle_center_x, particle_center_y, particle_radius, particle_bessel_orders, particle_intensities, ellipsoidal_orientation in zip(
-        #         particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list,
-        #         particle_intensities_list, ellipsoidal_orientation_list):
+        # calculate matrix coordinates from the center of the image
+        image_coordinate_x, image_coordinate_y = meshgrid(arange(start_x, stop_x),
+                                                          arange(start_y, stop_y),
+                                                          sparse=False,
+                                                          indexing='ij')
 
-            # calculate the radial distance from the center of the particle 
-            # normalized by the particle radius
-            radial_distance_from_particle = sqrt((image_coordinate_x - particle_center_x) ** 2
-                                                 + (image_coordinate_y - particle_center_y) ** 2
+        # calculate the elliptical distance from the center of the particle normalized by the particle radius
+        rotated_distance_x = (image_coordinate_x - particle_center_x) * cos(ellipsoidal_orientation) + (
+                image_coordinate_y - particle_center_y) * sin(ellipsoidal_orientation)
+        rotated_distance_y = -(image_coordinate_x - particle_center_x) * sin(ellipsoidal_orientation) + (
+                image_coordinate_y - particle_center_y) * cos(ellipsoidal_orientation)
+
+        # The factor 2 is because the particle radius is defined as the point where the intensity reaches 1/3 of
+        # the intensity in the middle of the particle when Bessel order = 0. When Bessel order = 1, the middle of
+        # the particle is black, and at the radius the intensity is approximately at its maximum. For higher
+        # Bessel orders, there is no clear definition of the radius.
+        elliptical_distance_from_particle = 2 * sqrt((rotated_distance_x) ** 2
+                                                 + (rotated_distance_y / ellipticity) ** 2
                                                  + .001 ** 2) / particle_radius
 
-            # for elliptical particles
-            rotated_distance_x = (image_coordinate_x - particle_center_x) * cos(ellipsoidal_orientation) + (
-                        image_coordinate_y - particle_center_y) * sin(ellipsoidal_orientation)
-            rotated_distance_y = -(image_coordinate_x - particle_center_x) * sin(ellipsoidal_orientation) + (
-                        image_coordinate_y - particle_center_y) * cos(ellipsoidal_orientation)
-
-            # The factor 2 is because the particle radius is defined as the point where the intensity reaches 1/3 of
-            # the intensity in the middle of the particle when Bessel order = 1. When Bessel order = 2, the middle of
-            # the particle is black, and at the radius the intensity is approximately at its maximum. For higher
-            # Bessel orders, there is no clear definition of the radius.
-
-            elliptical_distance_from_particle = 2*sqrt((rotated_distance_x) ** 2
-                                                     + (rotated_distance_y / ellipticity) ** 2
-                                                     + .001 ** 2) / particle_radius
-
-            # calculate particle profile.
-            image_particle = 4 * particle_bessel_order ** 2.5 * (bessel(particle_bessel_order,
-                                                                        elliptical_distance_from_particle) / elliptical_distance_from_particle) ** 2
-            image_particles = image_particles + particle_intensity * image_particle
-
-            # for particle_bessel_order, particle_intensity in zip(particle_bessel_orders, particle_intensities):
-            #     image_particle = 4 * particle_bessel_order ** 2.5 * (bessel(particle_bessel_order,
-            #                                                                 elliptical_distance_from_particle) / elliptical_distance_from_particle) ** 2
-            #     image_particles = image_particles + particle_intensity * image_particle
+        # calculate particle profile.
+        image_particle = 4 * particle_bessel_order ** 2.5 * (bessel(particle_bessel_order,
+                                                                    elliptical_distance_from_particle) / elliptical_distance_from_particle) ** 2
+        image_particles[start_x:stop_x, start_y:stop_y] = image_particles[start_x:stop_x,
+                                                          start_y:stop_y] + particle_intensity * image_particle
 
     # calculate image without noise as background image plus particle image
     image_particles_without_noise = clip(image_background + image_particles, 0, 1)
 
     ### ADD NOISE
-    from numpy.random import normal
-    noise = normal(0, signal_standard_deviation / (signal_to_noise_ratio ** (1 / 2)), (256, 256))
+    # calculate RMS of particles (signals) by assuming normal distribution. Then the RMS for each particle is simply the
+    # standard deviation of the distribution, which in turn is the maximum value divided by the square root of e. To
+    # calculate the RMS of all the particles, we just take the RMS of each particle RMS
+    signal_RMS = (mean((particle_intensity_list * e ** (-1 / 2)) ** 2)) ** (1 / 2)
 
-    #print("Before poisson: Min is %.4f, Max is %.4f" % (np.amin(image_particles_without_noise), np.amax(image_particles_without_noise)))
+    # the RMS of the noise is the RMS of the particles divided by the square root of SNR
+    noise_RMS = signal_RMS * (signal_to_noise_ratio ** (-1 / 2))
 
-    image_particles_with_noise = clip(
-        poisson(image_particles_without_noise * signal_to_noise_ratio ** 2) / signal_to_noise_ratio ** 2,
-        0,
-        1)
+    # the noise image is then calculated using a normal distribution with mean 0 and standard deviation noise_RMS
+    noise = normal(0, noise_RMS, (image_size,image_size))
 
-    #print("After poisson: Min is %.4f, Max is %.4f" % (np.amin(image_particles_with_noise), np.amax(image_particles_with_noise)))
+    # print("Before poisson: Min is %.4f, Max is %.4f" % (np.amin(image_particles_without_noise),
+    # np.amax(image_particles_without_noise)))
+
+    image_particles_with_noise = clip(image_particles_without_noise + noise, 0, 1)
+
+    # print("After poisson: Min is %.4f, Max is %.4f" % (np.amin(image_particles_with_noise),
+    # np.amax(image_particles_with_noise)))
 
     return image_particles_with_noise
-
-
-def calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list, particle_radius_list, image_particles,
-                              particle_intensities_list):
-    from numba import cuda
-    from math import ceil, exp
-
-    # the cuda kernel calculating the value of the Gauss function for each pixel in out image
-    @cuda.jit
-    def part_prof(d_dist_x, d_dist_y, d_radiuses, d_img_part, d_particle_intensities):
-
-        x, y = cuda.grid(2)
-
-        if x >= d_img_part.shape[0] and y >= d_img_part.shape[1]:
-            # Quit if (x, y) is outside of valid C boundary
-            return
-
-        for i in range(d_dist_x.shape[0]):
-            tmp = d_particle_intensities[i][0][0] * exp(-(
-                        (x - d_dist_x[i]) ** 2 / (2 * d_radiuses[i] ** 2) + (y - d_dist_y[i]) ** 2 / (
-                            2 * d_radiuses[i] ** 2)))
-
-            d_img_part[x, y] = d_img_part[x, y] + tmp
-
-    # define threads per block and blocks per grid. This dictates how our cuda kernel devides tasks.
-    TPB = 32
-    threadsperblock = (TPB, TPB)
-    blockspergrid_x = int(ceil(image_particles.shape[0] / threadsperblock[0]))
-    blockspergrid_y = int(ceil(image_particles.shape[1] / threadsperblock[1]))
-    blockspergrid = (blockspergrid_x, blockspergrid_y)
-
-    # introduce stream dictating the order of data being sent to GPU
-    # create an cuda object of each object we wish to have handled by the GPU. This is because data transfer to and from GPU is costly.
-    stream = cuda.stream()
-    d_pos_x = cuda.to_device(particle_center_x_list, stream=stream)
-    d_pos_y = cuda.to_device(particle_center_y_list, stream=stream)
-    d_radiuses = cuda.to_device(particle_radius_list, stream=stream)
-    d_img_part = cuda.to_device(image_particles, stream=stream)
-    d_particle_intensities = cuda.to_device(particle_intensities_list, stream=stream)
-
-    # call the cuda kernel
-    part_prof[blockspergrid, threadsperblock](d_pos_x, d_pos_y, d_radiuses, d_img_part, d_particle_intensities)
-
-    # retrieve our image particle matrix from GPU
-    d_img_part.copy_to_host(image_particles, stream=stream)
 
 
 def draw_image(img):
@@ -345,7 +299,7 @@ def plot_sample_image(image_parameters, image=None, figsize=(15, 5)):
     return
 
 
-def get_label(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
+def get_label(image_parameters=get_image_parameters_preconfig()):
     """Create and return binary target image given image parameters
     Input: Image parameters
     Output: Array of size (image_x, image_y, number_of_features = 5), where the features at index i are:
@@ -355,10 +309,6 @@ def get_label(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
         i = 3 - radius
         i = 4 - intensity
     """
-    if (use_gpu):
-        pass
-        # print('GPU not yet implemented')
-        # return targetBinaryImage
 
     import numpy as np
 
@@ -394,42 +344,8 @@ def get_label(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
     return targetBinaryImage
 
 
-def get_label_old(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
-    """Create and return binary target image given image parameters
-    Input: Image parameters
-    Output: Binary image of the input image size where pixels containing particles are marked as ones, while rest are zeros
-    """
-    if (use_gpu):
-        print('GPU not yet implemented')
-    else:
-        import numpy as np
-
-        particle_center_x_list = image_parameters['Particle Center X List']
-        particle_center_y_list = image_parameters['Particle Center Y List']
-        particle_radius_list = image_parameters['Particle Radius List']
-        image_size = image_parameters['Image Size']
-
-        targetBinaryImage = np.zeros((image_size, image_size))
-
-        for particle_index in range(0, len(particle_center_x_list)):
-            center_x = particle_center_x_list[particle_index]
-            center_y = particle_center_y_list[particle_index]
-            radius = particle_radius_list[particle_index]
-
-            """Loops over all pixels with center in coordinates = [ceil(center - radius): floor(center + radius)]. Adds the ones with
-            center within radius.
-            """
-            for pixel_x in range(int(np.floor(center_x - radius)), int(np.ceil(center_x + radius) + 1)):
-                for pixel_y in range(int(np.floor(center_y - radius)), int(np.ceil(center_y + radius) + 1)):
-                    if ((pixel_x - center_x) ** 2 + (pixel_y - center_y) ** 2 <= radius ** 2):
-                        targetBinaryImage[pixel_x, pixel_y] = 1
-
-        return targetBinaryImage
-
-
 def get_batch(get_image_parameters=lambda: get_image_parameters_preconfig(),
-              batch_size=32,
-              use_gpu=False):
+              batch_size=32):
     from numpy import zeros
     import time
 
@@ -443,8 +359,8 @@ def get_batch(get_image_parameters=lambda: get_image_parameters_preconfig(),
     t = time.time()
     for i in range(batch_size):
         image_parameters = get_image_parameters()
-        image_batch[i, :, :, 0] = get_image(image_parameters, use_gpu)
-        label_batch[i, :, :, 0:5] = get_label(image_parameters, use_gpu)
+        image_batch[i, :, :, 0] = get_image(image_parameters)
+        label_batch[i, :, :, 0:5] = get_label(image_parameters)
 
     time_taken = time.time() - t
 
@@ -464,7 +380,7 @@ def save_batch(batch, label_path='data', image_path='data', image_filename='imag
         image = image_batch[i]
         print("Min is %.4f, Max is %.4f" % (np.amin(image), np.amax(image)))
         imsave("%s/%s%d.png" % (image_path, image_filename, i), image_batch[i])
-        #np.save("%s/%s%d" % (label_path, label_filename, i), label_batch[i])
+        # np.save("%s/%s%d" % (label_path, label_filename, i), label_batch[i])
     return
 
 
@@ -474,14 +390,14 @@ def load_batch(batch_size, label_path='data', image_path='data', image_filename=
 
     image_shape = imread("%s/%s%d.png" % (image_path, image_filename, 0)).shape
     label_shape = np.load("%s/%s%d.npy" % (label_path, label_filename, 0)).shape
-    image_batch = np.zeros((batch_size, ) + image_shape + (1,))
-    label_batch = np.zeros((batch_size, ) + label_shape)
+    image_batch = np.zeros((batch_size,) + image_shape + (1,))
+    label_batch = np.zeros((batch_size,) + label_shape)
 
     for j in range(batch_size):
-        image_batch[j,:,:,0] = imread("%s/%s%d.png" % (image_path, image_filename, j))
+        image_batch[j, :, :, 0] = imread("%s/%s%d.png" % (image_path, image_filename, j))
         label_batch[j] = np.load("%s/%s%d.npy" % (label_path, label_filename, j))
 
-    return(image_batch, label_batch)
+    return (image_batch, label_batch)
 
 
 def generator_for_training(get_batch=lambda: get_batch(), aug_parameters=get_aug_parameters()):
@@ -560,36 +476,31 @@ def get_padding(input_size, n):
 
 
 def create_data_generator(get_image_parameters=lambda: get_image_parameters_preconfig(),
-                 epoch_batch_size=1000,
-                 use_GPU=False,
-                 batch_size=32,
-                 len=100):
-
+                          epoch_batch_size=1000,
+                          batch_size=32,
+                          len=100):
     from keras.utils import Sequence
 
     class DataGenerator(Sequence):
         """
-        At the beginning of each epoch, generates a batch of size epoch_batch_size using get_image_parameters and use_GPU. Then,
+        At the beginning of each epoch, generates a batch of size epoch_batch_size using get_image_parameters. Then,
         for each step, outputs a batch of size batch_size. This is done at most len times.
         """
 
         def __init__(self,
                      get_image_parameters=lambda: get_image_parameters_preconfig(),
                      epoch_batch_size=1000,
-                     use_GPU=False,
                      batch_size=32,
                      len=100):
             'Initialization'
             self.get_image_parameters = get_image_parameters
             self.epoch_batch_size = epoch_batch_size
-            self.use_GPU = use_GPU
-            # self.batch = get_batch(get_image_parameters, epoch_batch_size, use_GPU)
             self.on_epoch_end()
             self.len = len
             self.batch_size = batch_size
 
         def on_epoch_end(self):
-            self.batch = get_batch(self.get_image_parameters, self.epoch_batch_size, self.use_GPU)
+            self.batch = get_batch(self.get_image_parameters, self.epoch_batch_size)
             image_batch, label_batch = self.batch
             from matplotlib import pyplot as plt
             plt.imshow(image_batch[0, :, :, 0], cmap='gray')
@@ -606,9 +517,7 @@ def create_data_generator(get_image_parameters=lambda: get_image_parameters_prec
             image_batch, label_batch = self.batch
             return image_batch[image_indices], label_batch[image_indices]
 
-    return DataGenerator(get_image_parameters, epoch_batch_size, use_GPU, batch_size, len)
-
-
+    return DataGenerator(get_image_parameters, epoch_batch_size, batch_size, len)
 
 
 def get_particle_centers(label):
