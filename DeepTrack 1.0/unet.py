@@ -196,7 +196,7 @@ def weighted_crossentropy(y_true, y_pred, beta=45):
     from keras import backend as K
     T = K.flatten(y_true)
     P = K.flatten(y_pred)
-    return -20 * K.mean(beta * T * K.log(P + 1e-3) + (1 - T) * K.log(1 - P + 1e-3))
+    return -30 * K.mean(beta * T * K.log(P + 1e-3) + (1 - T) * K.log(1 - P + 1e-3))
 
 
 def loss(y_true, y_pred):

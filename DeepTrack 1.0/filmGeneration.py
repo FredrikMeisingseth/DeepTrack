@@ -73,15 +73,15 @@ def get_image_parameters_preconfig(image_size = 256):
     particle_number= randint(5, 6)
     particle_radius_list = list(uniform(0.25, 3, particle_number))
     (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list,image_size)
-   
-    particle_bessel_orders_list= []
-    particle_intensities_list= []
+
+    particle_bessel_orders_list = []
+    particle_intensities_list = []
     for i in range(particle_number):
         particle_bessel_orders_list.append([1,])
         particle_intensities_list.append([uniform(0.1,0.5),])
 
     image_parameters = get_image_parameters(
-        particle_center_x_list= lambda : particle_center_x_list, 
+        particle_center_x_list= lambda : particle_center_x_list,
         particle_center_y_list= lambda : particle_center_y_list,
         particle_radius_list=lambda : particle_radius_list,
         particle_bessel_orders_list= lambda:  particle_bessel_orders_list,
@@ -91,9 +91,9 @@ def get_image_parameters_preconfig(image_size = 256):
         image_size=lambda : image_size,
         image_background_level=lambda : uniform(.2, .5),
         signal_to_noise_ratio=lambda : 100,
-        gradient_intensity=lambda : uniform(0.25, 0.75), 
+        gradient_intensity=lambda : uniform(0.25, 0.75),
         gradient_direction=lambda : uniform(-pi, pi),
-        ellipsoidal_orientation=lambda : list(uniform(-pi, pi, particle_number)), 
+        ellipsoidal_orientation=lambda : list(uniform(-pi, pi, particle_number)),
         ellipticity= lambda: 1)
 
     return image_parameters
@@ -123,7 +123,7 @@ def get_image_parameters_film(image_parameters_prev, image_size = 256):
                 else:
                     particle_centers.append([x_new, y_new])
                 break
-            elif i==99:
+            elif i==100:
                 raise Exception("Couldn't place out another particle after 100 tries")
     
     particle_centers_x=[]
@@ -392,7 +392,7 @@ def get_label(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
         for pixel_x in range(int(np.floor(center_x - radius)), int(np.ceil(center_x + radius))):
             for pixel_y in range(int(np.floor(center_y - radius)), int(np.ceil(center_y + radius))):
                 if ((pixel_x - center_x) ** 2 + (pixel_y - center_y) ** 2 <= radius ** 2):
-                    # print('Pixel_x is: ' + str(pixel_x) + ". Pixel_y is: " + str(pixel_y) + ".")
+                    print('Pixel_x is: ' + str(pixel_x) + ". Pixel_y is: " + str(pixel_y) + ".")
                     targetBinaryImage[pixel_x, pixel_y, 0] = 1
                     targetBinaryImage[pixel_x, pixel_y, 1] = center_x - pixel_x
                     targetBinaryImage[pixel_x, pixel_y, 2] = center_y - pixel_y

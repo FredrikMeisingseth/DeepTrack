@@ -2,8 +2,8 @@ def get_image_parameters(
         particle_center_x_list=lambda: [0, ],
         particle_center_y_list=lambda: [0, ],
         particle_radius_list=lambda: [3, ],
-        particle_bessel_orders_list=lambda: [[1, ], ],
-        particle_intensities_list=lambda: [[.5, ], ],
+        particle_bessel_order_list=lambda: [1, ],
+        particle_intensity_list=lambda: [.5, ],
         image_size=lambda: 128,
         image_background_level=lambda: .5,
         signal_to_noise_ratio=lambda: 30,
@@ -17,8 +17,8 @@ def get_image_parameters(
     particle_center_x_list: x-centers of the particles [px, list of real numbers]
     particle_center_y_list: y-centers of the particles [px, list of real numbers]
     particle_radius_list: radii of the particles [px, list of real numbers]
-    particle_bessel_orders_list: Bessel orders of the particles [list (of lists) of positive integers]
-    particle_intensities_list: intensities of the particles [list (of lists) of real numbers, normalized to 1]
+    particle_bessel_order_list: Bessel orders of the particles
+    particle_intensity_list: intensities of the particles [list of real numbers, normalized to 1]
     image_size: size of the image in pixels [px, positive integer]
     image_background_level: background level [real number normalized to 1]
     signal_to_noise_ratio: signal to noise ratio [positive real number]
@@ -35,8 +35,8 @@ def get_image_parameters(
         image_parameters['Particle Center X List']
         image_parameters['Particle Center Y List']
         image_parameters['Particle Radius List']
-        image_parameters['Particle Bessel Orders List']
-        image_parameters['Particle Intensities List']
+        image_parameters['Particle Bessel Order List']
+        image_parameters['Particle Intensity List']
         image_parameters['Image Size']
         image_parameters['Image Background Level']
         image_parameters['Signal to Noise Ratio']
@@ -50,8 +50,8 @@ def get_image_parameters(
     image_parameters['Particle Center X List'] = particle_center_x_list()
     image_parameters['Particle Center Y List'] = particle_center_y_list()
     image_parameters['Particle Radius List'] = particle_radius_list()
-    image_parameters['Particle Bessel Orders List'] = particle_bessel_orders_list()
-    image_parameters['Particle Intensities List'] = particle_intensities_list()
+    image_parameters['Particle Bessel Order List'] = particle_bessel_order_list()
+    image_parameters['Particle Intensity List'] = particle_intensity_list()
     image_parameters['Image Size'] = image_size()
     image_parameters['Image Background Level'] = image_background_level()
     image_parameters['Signal to Noise Ratio'] = signal_to_noise_ratio()
@@ -65,27 +65,29 @@ def get_image_parameters(
 
 def get_image_parameters_preconfig(image_size=256):
     from numpy.random import uniform, randint
+    from numpy import ones
     from math import pi
 
-    particle_number = randint(20, 40)
-    particle_radius_list = uniform(0.25, 3, particle_number)
+    particle_number = randint(10, 30)
+    particle_radius_list = uniform(1, 2, particle_number)
     (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list, image_size)
 
-    particle_bessel_orders_list = []
-    particle_intensities_list = []
-    for i in range(particle_number):
-        particle_bessel_orders_list.append([1, ])
-        particle_intensities_list.append([uniform(0.1, 0.5, 1), ])
+    #particle_bessel_orders_list = []
+    #particle_intensities_list = []
+
+    #for i in range(particle_number):
+    #    particle_bessel_orders_list.append([1, ])
+    #    particle_intensities_list.append([uniform(0.1, 0.15, 1), ])
 
     image_parameters = get_image_parameters(
         particle_center_x_list=lambda: particle_center_x_list,
         particle_center_y_list=lambda: particle_center_y_list,
         particle_radius_list=lambda: particle_radius_list,
-        particle_bessel_orders_list=lambda: particle_bessel_orders_list,
-        particle_intensities_list=lambda: particle_intensities_list,
+        particle_bessel_order_list=lambda: ones(particle_number),#particle_bessel_orders_list,
+        particle_intensity_list=lambda: uniform(0.1,0.15,particle_number),#particle_intensities_list,
         image_size=lambda: image_size,
-        image_background_level=lambda: uniform(.2, .5),
-        signal_to_noise_ratio=lambda: uniform(2, 5),
+        image_background_level=lambda: uniform(.3, .5),
+        signal_to_noise_ratio=lambda: uniform(10, 11),
         gradient_intensity=lambda: uniform(0, 0.2),
         gradient_direction=lambda: uniform(-pi, pi),
         ellipsoidal_orientation=lambda: uniform(-pi, pi, particle_number),
@@ -147,8 +149,8 @@ def get_image(image_parameters, use_gpu=False):
         image_parameters['Particle Center X List']
         image_parameters['Particle Center Y List']
         image_parameters['Particle Radius List']
-        image_parameters['Particle Bessel Orders List']
-        image_parameters['Particle Intensities List']
+        image_parameters['Particle Bessel Order List']
+        image_parameters['Particle Intensity List']
         image_parameters['Image Size']
         image_parameters['Image Background Level']
         image_parameters['Signal to Noise Ratio']
@@ -169,8 +171,8 @@ def get_image(image_parameters, use_gpu=False):
     particle_center_x_list = image_parameters['Particle Center X List']
     particle_center_y_list = image_parameters['Particle Center Y List']
     particle_radius_list = image_parameters['Particle Radius List']
-    particle_bessel_orders_list = image_parameters['Particle Bessel Orders List']
-    particle_intensities_list = image_parameters['Particle Intensities List']
+    particle_bessel_order_list = image_parameters['Particle Bessel Order List']
+    particle_intensity_list = image_parameters['Particle Intensity List']
     image_size = image_parameters['Image Size']
     image_background_level = image_parameters['Image Background Level']
     signal_to_noise_ratio = image_parameters['Signal to Noise Ratio']
@@ -201,13 +203,17 @@ def get_image(image_parameters, use_gpu=False):
     # calculate the particle profiles of all particles and add them to image_particles
     if (use_gpu):
         calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list, particle_radius_list, image_particles,
-                                  particle_intensities_list)
+                                  particle_intensity_list)
     else:
         from scipy.special import jv as bessel
 
-        for particle_center_x, particle_center_y, particle_radius, particle_bessel_orders, particle_intensities, ellipsoidal_orientation in zip(
-                particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list,
-                particle_intensities_list, ellipsoidal_orientation_list):
+        for particle_center_x, particle_center_y, particle_radius, particle_bessel_order, particle_intensity, ellipsoidal_orientation in zip(
+                particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_order_list,
+                particle_intensity_list, ellipsoidal_orientation_list):
+
+        # for particle_center_x, particle_center_y, particle_radius, particle_bessel_orders, particle_intensities, ellipsoidal_orientation in zip(
+        #         particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list,
+        #         particle_intensities_list, ellipsoidal_orientation_list):
 
             # calculate the radial distance from the center of the particle 
             # normalized by the particle radius
@@ -231,21 +237,28 @@ def get_image(image_parameters, use_gpu=False):
                                                      + .001 ** 2) / particle_radius
 
             # calculate particle profile.
-            for particle_bessel_order, particle_intensity in zip(particle_bessel_orders, particle_intensities):
-                image_particle = 4 * particle_bessel_order ** 2.5 * (bessel(particle_bessel_order,
-                                                                            elliptical_distance_from_particle) / elliptical_distance_from_particle) ** 2
-                image_particles = image_particles + particle_intensity * image_particle
+            image_particle = 4 * particle_bessel_order ** 2.5 * (bessel(particle_bessel_order,
+                                                                        elliptical_distance_from_particle) / elliptical_distance_from_particle) ** 2
+            image_particles = image_particles + particle_intensity * image_particle
+
+            # for particle_bessel_order, particle_intensity in zip(particle_bessel_orders, particle_intensities):
+            #     image_particle = 4 * particle_bessel_order ** 2.5 * (bessel(particle_bessel_order,
+            #                                                                 elliptical_distance_from_particle) / elliptical_distance_from_particle) ** 2
+            #     image_particles = image_particles + particle_intensity * image_particle
 
     # calculate image without noise as background image plus particle image
     image_particles_without_noise = clip(image_background + image_particles, 0, 1)
 
     ### ADD NOISE
+    from numpy.random import normal
+    noise = normal(0, signal_standard_deviation / (signal_to_noise_ratio ** (1 / 2)), (256, 256))
 
     #print("Before poisson: Min is %.4f, Max is %.4f" % (np.amin(image_particles_without_noise), np.amax(image_particles_without_noise)))
 
-    image_particles_with_noise = clip(poisson(
-        image_particles_without_noise * signal_to_noise_ratio ** 2) / signal_to_noise_ratio ** 2,
-                                      0, 1)
+    image_particles_with_noise = clip(
+        poisson(image_particles_without_noise * signal_to_noise_ratio ** 2) / signal_to_noise_ratio ** 2,
+        0,
+        1)
 
     #print("After poisson: Min is %.4f, Max is %.4f" % (np.amin(image_particles_with_noise), np.amax(image_particles_with_noise)))
 
@@ -319,8 +332,8 @@ def plot_sample_image(image_parameters, image=None, figsize=(15, 5)):
     particle_center_x_list = image_parameters['Particle Center X List']
     particle_center_y_list = image_parameters['Particle Center Y List']
     particle_radius_list = image_parameters['Particle Radius List']
-    particle_bessel_orders_list = image_parameters['Particle Bessel Orders List']
-    particle_intensities_list = image_parameters['Particle Intensities List']
+    particle_bessel_order_list = image_parameters['Particle Bessel Order List']
+    particle_intensity_list = image_parameters['Particle Intensity List']
     image_size = image_parameters['Image Size']
     image_background_level = image_parameters['Image Background Level']
     signal_to_noise_ratio = image_parameters['Signal to Noise Ratio']
@@ -353,7 +366,7 @@ def get_label(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
     particle_center_y_list = image_parameters['Particle Center Y List']
     particle_radius_list = image_parameters['Particle Radius List']
     image_size = image_parameters['Image Size']
-    particle_intensities_list = image_parameters['Particle Intensities List']
+    particle_intensity_list = image_parameters['Particle Intensity List']
 
     targetBinaryImage = np.zeros((image_size, image_size, 5))
 
@@ -361,7 +374,7 @@ def get_label(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
         center_x = particle_center_x_list[particle_index]
         center_y = particle_center_y_list[particle_index]
         radius = particle_radius_list[particle_index]
-        intensity = particle_intensities_list[particle_index]
+        intensity = particle_intensity_list[particle_index]
         # print('Center_x is: ' + str(center_x) + ". Center_y is: " + str(center_y) + ". Radius is: " + str(radius) + ".")
 
         """Loops over all pixels with center in coordinates = [ceil(center - radius): floor(center + radius)]. Adds the ones with
@@ -376,7 +389,7 @@ def get_label(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
                     targetBinaryImage[pixel_x, pixel_y, 2] = center_y - pixel_y
                     # print('X vector is: ' + str(targetBinaryImage[pixel_x, pixel_y, 1]) + '. Y vector is: ' + str(targetBinaryImage[pixel_x, pixel_y, 2] ))
                     targetBinaryImage[pixel_x, pixel_y, 3] = radius
-                    targetBinaryImage[pixel_x, pixel_y, 4] = intensity[0]
+                    targetBinaryImage[pixel_x, pixel_y, 4] = intensity
 
     return targetBinaryImage
 
