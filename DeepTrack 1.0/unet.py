@@ -75,9 +75,6 @@ def create_unet(pretrained_weights=None, input_size=(None, None, 1)):
 
     model = Model(inputs=[input], outputs=[output])
 
-
-
-
     model.compile(optimizer=Adam(lr=1e-4), loss=loss, metrics=[particle_loss,
                                                                x_loss,
                                                                y_loss,
@@ -92,29 +89,7 @@ def create_unet(pretrained_weights=None, input_size=(None, None, 1)):
 
 
 def create_multiframe_unet(pretrained_weights=None, input_size=(None, None, None, 1)):
-    """Creates a unet that takes inputs of shape (px, px, 1) and outputs of shape (px, px, 5). The output features are:
-    1)  Binary, is there a particle here?
-    2)  X_vector to center of particle
-    3)  Y_vector to center of particle
-    4)  Particle radius
-    5)  Particle intensity
-
-    The loss function is calculated in the following way:
-    1)  Binary crossentropy on the first feature.
-    2)  For each pixel, if the first feature label is 1 (there is a particle here), then calculate the L1 loss for the
-        remaining features.
-
-    The inputs to the network are images with values within [0:255], the outputs (and labels) are:
-    1)      [0:1]
-    2-4)    Can take on any values ([0:image_size/2])
-    5)      [0:1]
-
-    Inputs:
-    pretrained_weights: if not None, loads the pretrained weights into the network
-    input_size: the size of the input image (px,px,color channels)
-
-    Outputs:
-    network: the created network
+    """ LSTM U-Net, architecture should work, but unused
     """
     from keras.models import Model
     from keras.optimizers import Adam
@@ -245,17 +220,22 @@ def x_loss(y_true, y_pred):
     feature_number = 1
     return feature_loss(y_true, y_pred, feature_number)
 
+
 def y_loss(y_true, y_pred):
     feature_number = 2
     return feature_loss(y_true, y_pred, feature_number)
+
 
 def r_loss(y_true, y_pred):
     feature_number = 3
     return feature_loss(y_true, y_pred, feature_number)
 
+
 def i_loss(y_true, y_pred):
-    feature_number = 4; feature_weight = 5
+    feature_number = 4;
+    feature_weight = 5
     return feature_loss(y_true, y_pred, feature_number, feature_weight)
+
 
 def feature_loss(y_true, y_pred, feature_number, feature_weight=1):
     from keras import backend as K
