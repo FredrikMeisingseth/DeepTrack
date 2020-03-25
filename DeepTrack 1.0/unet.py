@@ -210,7 +210,7 @@ def loss(y_true, y_pred):
     particle_pred = 1 / (1 + K.exp(-P))
 
     loss = weighted_crossentropy(particle_true, particle_pred)
-    feature_loss_weight = [1, 1, 1, 1, 5]
+    feature_loss_weight = [1, 1, 1, 5]
     for feature_number in range(1, 5):
         feature_true = K.flatten(y_true[:, :, :, feature_number])
         feature_pred = K.flatten(y_pred[:, :, :, feature_number])
