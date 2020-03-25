@@ -1,12 +1,11 @@
-import keras
-
-
 def get_image_parameters(
     particle_center_x_list=lambda : [0, ], 
     particle_center_y_list=lambda : [0, ], 
     particle_radius_list=lambda : [3, ], 
     particle_bessel_orders_list=lambda : [[1, ], ], 
     particle_intensities_list=lambda : [[.5, ], ],
+    particle_speed_list = lambda : [10, ],
+    particle_direction_list = lambda : [0, ],
     image_size=lambda : 128, 
     image_background_level=lambda : .5,
     signal_to_noise_ratio=lambda : 30,
@@ -55,6 +54,8 @@ def get_image_parameters(
     image_parameters['Particle Radius List'] = particle_radius_list()
     image_parameters['Particle Bessel Orders List'] = particle_bessel_orders_list()
     image_parameters['Particle Intensities List'] = particle_intensities_list()
+    image_parameters['Particle Speed List'] = particle_speed_list()
+    image_parameters['Particle Direction List'] = particle_direction_list()
     image_parameters['Image Size'] = image_size()
     image_parameters['Image Background Level'] = image_background_level()
     image_parameters['Signal to Noise Ratio'] = signal_to_noise_ratio()
@@ -66,19 +67,18 @@ def get_image_parameters(
     return image_parameters
 
 def get_image_parameters_preconfig(image_size = 256):
-
     from numpy.random import uniform, randint
     from math import pi
 
-    particle_number= randint(20, 40)
-    particle_radius_list = uniform(0.25, 3, particle_number)
+    particle_number= randint(5, 6)
+    particle_radius_list = list(uniform(0.25, 3, particle_number))
     (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list,image_size)
-
+   
     particle_bessel_orders_list= []
     particle_intensities_list= []
     for i in range(particle_number):
         particle_bessel_orders_list.append([1,])
-        particle_intensities_list.append([uniform(0.1,0.5,1),])
+        particle_intensities_list.append([uniform(0.1,0.5),])
 
     image_parameters = get_image_parameters(
         particle_center_x_list= lambda : particle_center_x_list, 
@@ -86,43 +86,49 @@ def get_image_parameters_preconfig(image_size = 256):
         particle_radius_list=lambda : particle_radius_list,
         particle_bessel_orders_list= lambda:  particle_bessel_orders_list,
         particle_intensities_list= lambda : particle_intensities_list,
+        particle_speed_list= lambda : list(uniform(1,5,particle_number)),
+        particle_direction_list= lambda : list(uniform(pi*0.9,pi*1.1,particle_number)),
         image_size=lambda : image_size,
         image_background_level=lambda : uniform(.2, .5),
-        signal_to_noise_ratio=lambda : uniform(2, 10),
+        signal_to_noise_ratio=lambda : 100,
         gradient_intensity=lambda : uniform(0.25, 0.75), 
         gradient_direction=lambda : uniform(-pi, pi),
-        ellipsoidal_orientation=lambda : uniform(-pi, pi, particle_number), 
+        ellipsoidal_orientation=lambda : list(uniform(-pi, pi, particle_number)), 
         ellipticity= lambda: 1)
 
     return image_parameters
 
-
 def get_image_parameters_film(image_parameters_prev, image_size = 256):
-    from numpy import reshape, delete
     from numpy.random import uniform, randint
     from math import pi, cos, sin
 
     max_move = 10
     particle_centers = []
-    for (radius, x, y, index) in zip(image_parameters_prev['Particle Radius List'],
+    for (radius, x, y, speed, direction, index) in zip(image_parameters_prev['Particle Radius List'],
                              image_parameters_prev['Particle Center X List'],
                              image_parameters_prev['Particle Center Y List'],
+                             image_parameters_prev['Particle Speed List'],
+                             image_parameters_prev['Particle Direction List'],
                              range(len(image_parameters_prev['Particle Radius List']))):
 
         for i in range(100):
-            r = uniform(0, max_move)
+            r = 0#uniform(0, max_move)
             theta = uniform(0, 2*pi)
-            (x_new, y_new) = (x+r*cos(theta), y+r*sin(theta))
+            (x_new, y_new) = (x+r*cos(theta)+speed*cos(direction), y+r*sin(theta)+speed*sin(direction))
             if all(((x_new - coord[0]) ** 2 + (y_new - coord[1]) ** 2) ** 0.5 > radius for coord in particle_centers):
                 if (not (radius < x_new < image_size-radius)) or (not (radius < y_new < image_size-radius)):
-                    delete(image_parameters_prev['Particle Radius List'], index)
-                    delete(image_parameters_prev['Particle Bessel Orders List'], index)
-                    delete(image_parameters_prev['Particle Intensities List'], index)          
+                    del image_parameters_prev['Particle Radius List'][index]
+                    del image_parameters_prev['Particle Bessel Orders List'][index]
+                    del image_parameters_prev['Particle Intensities List'][index]
+                    del image_parameters_prev['Particle Speed List'][index]
+                    del image_parameters_prev['Particle Direction List'][index]
+                    del image_parameters_prev['Ellipsoid Orientation'][index]
                 else:
                     particle_centers.append([x_new, y_new])
                 break
             elif i==99:
                 raise Exception("Couldn't place out another particle after 100 tries")
+    
     particle_centers_x=[]
     particle_centers_y=[]
     for coordinates in particle_centers:
@@ -132,6 +138,15 @@ def get_image_parameters_film(image_parameters_prev, image_size = 256):
     image_parameters_prev['Particle Center X List'] = particle_centers_x
     image_parameters_prev['Particle Center Y List'] = particle_centers_y
 
+    if uniform(0,1) < 0.5:
+        image_parameters_prev['Particle Center X List'].append(image_size-10)
+        image_parameters_prev['Particle Center Y List'].append(uniform(10,image_size))
+        image_parameters_prev['Particle Radius List'].append(uniform(0.25,3))
+        image_parameters_prev['Particle Bessel Orders List'].append([1,])
+        image_parameters_prev['Particle Intensities List'].append([uniform(0.1,0.5),])
+        image_parameters_prev['Particle Speed List'].append(uniform(1,5))
+        image_parameters_prev['Particle Direction List'].append(uniform(pi*0.9,pi*1.1))  
+        image_parameters_prev['Ellipsoid Orientation'].append(uniform(-pi,pi))
     return image_parameters_prev
 
 def get_aug_parameters():
@@ -239,7 +254,8 @@ def get_image(image_parameters, use_gpu=False):
 
     # calculate the particle profiles of all particles and add them to image_particles
     if(use_gpu):
-        calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list)
+        print('No GPU!')
+        #calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list)
     else:
         from scipy.special import jv as bessel
         
@@ -275,49 +291,6 @@ def get_image(image_parameters, use_gpu=False):
     image_particles_with_noise = poisson(image_particles_without_noise * signal_to_noise_ratio**2) / signal_to_noise_ratio**2
 
     return image_particles_with_noise
-
-def calc_particle_profile_gpu(particle_center_x_list, particle_center_y_list,particle_radius_list, image_particles,particle_intensities_list):
-    from numba import cuda
-    from math import ceil,exp
-
-
-    # the cuda kernel calculating the value of the Gauss function for each pixel in out image
-    @cuda.jit
-    def part_prof(d_dist_x,d_dist_y,d_radiuses,d_img_part,d_particle_intensities):
-
-        x, y = cuda.grid(2)
-
-        if x >= d_img_part.shape[0] and y >= d_img_part.shape[1]:
-            # Quit if (x, y) is outside of valid C boundary
-            return
-
-        for i in range(d_dist_x.shape[0]):
-
-            tmp = d_particle_intensities[i][0][0]*exp(-((x-d_dist_x[i])**2/(2*d_radiuses[i]**2) + (y-d_dist_y[i])**2/(2*d_radiuses[i]**2)))
-
-            d_img_part[x, y] = d_img_part[x,y] + tmp
-
-    # define threads per block and blocks per grid. This dictates how our cuda kernel devides tasks.
-    TPB = 32
-    threadsperblock = (TPB, TPB)
-    blockspergrid_x = int(ceil(image_particles.shape[0] / threadsperblock[0]))
-    blockspergrid_y = int(ceil(image_particles.shape[1] / threadsperblock[1]))
-    blockspergrid = (blockspergrid_x, blockspergrid_y)
-    
-    # introduce stream dictating the order of data being sent to GPU
-    # create an cuda object of each object we wish to have handled by the GPU. This is because data transfer to and from GPU is costly.
-    stream = cuda.stream()
-    d_pos_x = cuda.to_device(particle_center_x_list,stream = stream)
-    d_pos_y = cuda.to_device(particle_center_y_list,stream = stream)
-    d_radiuses = cuda.to_device(particle_radius_list,stream = stream)
-    d_img_part = cuda.to_device(image_particles,stream = stream)
-    d_particle_intensities = cuda.to_device(particle_intensities_list,stream = stream)
-
-    # call the cuda kernel
-    part_prof[blockspergrid, threadsperblock](d_pos_x,d_pos_y,d_radiuses, d_img_part,d_particle_intensities)
-
-    # retrieve our image particle matrix from GPU
-    d_img_part.copy_to_host(image_particles, stream = stream)
 
 def draw_image(img):
     from matplotlib import pyplot as plt
@@ -421,7 +394,7 @@ def get_label(image_parameters=get_image_parameters_preconfig(), use_gpu=False):
         """
         for pixel_x in range(int(np.floor(center_x - radius)), int(np.ceil(center_x + radius))):
             for pixel_y in range(int(np.floor(center_y - radius)), int(np.ceil(center_y + radius))):
-                if ((pixel_x - center_x) ** 2 + (pixel_y - center_y) ** 2 <= radius ** 2):
+                if ((pixel_x - center_x) ** 2 + (pixel_y - center_y) ** 2 <= radius ** 2) and 0 <= pixel_x <= image_size-1 and 0 <= pixel_y <= image_size-1:
                     # print('Pixel_x is: ' + str(pixel_x) + ". Pixel_y is: " + str(pixel_y) + ".")
                     targetBinaryImage[pixel_x, pixel_y, 0] = 1
                     targetBinaryImage[pixel_x, pixel_y, 1] = center_x - pixel_x
@@ -465,8 +438,24 @@ def get_label_old(image_parameters=get_image_parameters_preconfig(), use_gpu=Fal
 
         return targetBinaryImage
 
-def get_batch(get_image_parameters = lambda prev: get_image_parameters_film(prev),
-              batch_size=32, 
+def get_batch(batch_size=32):
+    import numpy as np
+    film_batch = []
+    label_batch = []
+    for i in range(batch_size):
+        (film, labels) = get_film()
+        film_batch.append(film)
+        label_batch.append(labels[-1])
+    
+    print(np.shape(film_batch))
+    print(np.shape(label_batch))
+    label_batch = np.reshape(label_batch, (32,1,256,256,5))
+    print(np.shape(label_batch))
+
+    return (film_batch, label_batch)
+
+def get_film(get_image_parameters = lambda prev: get_image_parameters_film(prev),
+              batch_size=4, 
               use_gpu=False, 
               return_image_parameters=False):
     
@@ -607,45 +596,6 @@ def get_particle_centers(label):
 
     return (x_mean_list, y_mean_list)
 
-class DataGenerator(keras.utils.Sequence):
-    """
-    At the beginning of each epoch, generates a batch of size epoch_batch_size using get_image_parameters and use_GPU. Then,
-    for each step, outputs a batch of size batch_size. This is done at most len times.
-    """
-    def __init__(self,
-                 get_image_parameters = lambda: get_image_parameters_preconfig(),
-                 epoch_batch_size = 1000,
-                 use_GPU = False,
-                 batch_size = 32,
-                 len = 100):
-        'Initialization'
-        self.get_image_parameters = get_image_parameters
-        self.epoch_batch_size = epoch_batch_size
-        self.use_GPU = use_GPU
-        #self.batch = get_batch(get_image_parameters, epoch_batch_size, use_GPU)
-        self.on_epoch_end()
-        self.len = len
-        self.batch_size = batch_size
-
-    def on_epoch_end(self):
-        self.batch = get_batch(self.get_image_parameters, self.epoch_batch_size, self.use_GPU)
-        image_batch, label_batch = self.batch
-        from matplotlib import pyplot as plt
-        plt.imshow(image_batch[0,:,:,0], cmap = 'gray')
-        plt.show()
-        plt.imshow(label_batch[0,:,:,0], cmap = 'gray')
-        plt.show()
-
-    def __len__(self):
-
-        return(self.len)
-
-    def __getitem__(self, index):
-        from random import randint
-        image_indices = [randint(0,self.epoch_batch_size-1) for i in range(self.batch_size)]
-        image_batch, label_batch = self.batch
-        return image_batch[image_indices], label_batch[image_indices]
-
 def get_particle_centers(label):
     from skimage import measure
     from statistics import mean
@@ -665,7 +615,6 @@ def get_particle_centers(label):
         y_mean_list.append(mean(y_list))
     return (x_mean_list, y_mean_list)
 
-
 def get_particle_centers_pairs(label): #Returns on form [[x1,y1],[x2,y2]...]
     from skimage import measure
     from statistics import mean
@@ -673,14 +622,62 @@ def get_particle_centers_pairs(label): #Returns on form [[x1,y1],[x2,y2]...]
     (label_id, number_of_particles) = measure.label(label[:,:,0], return_num=True)
     #Bra namn
     particle_centers =[]
+    mean_radius = []
     for particle_id in range(1,number_of_particles+1):
         x_list=[]
         y_list=[]
+        radius_list =[]
         coords = argwhere(label_id==particle_id)
         for coord in coords:
             x_list.append(coord[0]+label[coord[0],coord[1],1])
             y_list.append(coord[1]+label[coord[0],coord[1],2])
-
+            radius_list.append(label[coord[0],coord[1],3])
         particle_centers.append([mean(x_list),mean(y_list)])
+        mean_radius.append(mean(radius_list))
+        
+    return particle_centers, mean_radius
 
-    return particle_centers
+
+from keras.utils import Sequence
+
+class DataGenerator(Sequence):
+    """
+    At the beginning of each epoch, generates a batch of size epoch_batch_size using get_image_parameters and use_GPU. Then,
+    for each step, outputs a batch of size batch_size. This is done at most len times.
+    """
+    def __init__(self,
+                 get_image_parameters = lambda: get_image_parameters_film(),
+                 epoch_batch_size = 1000,
+                 use_GPU = False,
+                 batch_size = 32,
+                 len = 100):
+        'Initialization'
+        self.get_image_parameters = get_image_parameters
+        self.epoch_batch_size = epoch_batch_size
+        self.use_GPU = use_GPU
+        #self.batch = get_batch(get_image_parameters, epoch_batch_size, use_GPU)
+        self.on_epoch_end()
+        self.len = len
+        self.batch_size = batch_size
+
+    def on_epoch_end(self):
+        self.batch = get_batch()
+        image_batch, label_batch = self.batch
+        from matplotlib import pyplot as plt
+        # plt.imshow(image_batch[0,:,:,0], cmap = 'gray')
+        # plt.show()
+        # plt.imshow(label_batch[0,:,:,0], cmap = 'gray')
+        # plt.show()
+
+    def __len__(self):
+
+        return(self.len)
+
+    def __getitem__(self, index):
+        from random import randint
+        import numpy as np
+        #image_indices = [randint(0,self.epoch_batch_size-1) for i in range(self.batch_size)]
+        image_batch, label_batch = self.batch
+        ret1 = [image_batch[randint(0,5)] for i in range(self.batch_size)]
+        ret2 = [label_batch[randint(0,5)] for i in range(self.batch_size)]
+        return np.asarray(ret1), np.asarray(ret2)
