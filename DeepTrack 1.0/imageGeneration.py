@@ -624,7 +624,7 @@ def get_particle_centers(label):
     return (x_mean_list, y_mean_list, r_mean_list, i_mean_list)
 
 
-def apply_sigmoid(batch_labels_or_predictions):
+def sigmoid(batch_labels_or_predictions):
     """ Applies the sigmoid function on the first feature of the label or prediction
     Inputs:
     batch_labels_or_predictions: either a batch_labels or a batch_predictions, so second or third element of a batch
@@ -639,7 +639,7 @@ def apply_sigmoid(batch_labels_or_predictions):
     return batch_labels_or_predictions
 
 
-def apply_cutoff(batch_labels_or_predictions, cutoff, apply_sigmoid=False):
+def cutoff(batch_labels_or_predictions, cutoff_value, apply_sigmoid=False):
     """ Applies a cutoff on the first feature of the label or prediction. This means that all values in the first
     feature >= cutoff are set to 1, while the rest are set to 0.
     Inputs:
@@ -653,12 +653,56 @@ def apply_cutoff(batch_labels_or_predictions, cutoff, apply_sigmoid=False):
     """
     import numpy as np
 
-    first_feature = batch_labels_or_predictions[:, :, :, 0]
-    if (apply_sigmoid):
-        first_feature = 1 / (1 + np.exp(-first_feature))
+    if apply_sigmoid:
+        batch_labels_or_predictions = sigmoid(batch_labels_or_predictions)
 
-    first_feature[first_feature >= cutoff] = 1
-    first_feature[first_feature < cutoff] = 0
+    first_feature = batch_labels_or_predictions[:, :, :, 0]
+    first_feature[first_feature >= cutoff_value] = 1
+    first_feature[first_feature < cutoff_value] = 0
 
     batch_labels_or_predictions[:, :, :, 0] = first_feature
     return batch_labels_or_predictions
+
+
+def visualise_batch(batch, index_of_image_to_show=0, use_predictions=True, zoom_value=5.0, apply_cutoff=False,
+                    cutoff_value=0.97, apply_sigmoid=False, title='Frame', colorbar=True):
+    """Method to visualise image and label/prediction from batch. The data from the label/prediction is visualised by
+        drawing out circles around particles. The position and size of the circles is calculated using
+        get_particle_centers.
+        Inputs:
+
+        Outputs:
+        fig: a pyplot figure
+    """
+    from scipy.ndimage import zoom
+    from matplotlib import pyplot as plt
+
+    (batch_images, batch_labels, batch_predictions) = batch
+    # Prepare the image data (label or prediction)
+    if use_predictions:
+        batch_data = batch_predictions.copy()
+    else:
+        batch_data = batch_labels.copy()
+
+    if apply_sigmoid:
+        batch_data = sigmoid(batch_data)
+
+    if apply_cutoff:
+        batch_data = cutoff(batch_data, cutoff_value, apply_sigmoid=False)
+
+    image_data = batch_data[index_of_image_to_show]
+    image = batch_images[index_of_image_to_show,:,:,0]
+    image = zoom(image, zoom_value)
+
+    # Shows the figure
+    (x_mean_list, y_mean_list, r_mean_list, i_mean_list) = get_particle_centers(image_data)
+
+    fig = plt.gcf()
+    ax = fig.gca()
+    plt.imshow(image, cmap='gray', vmin = 0, vmax = 1)
+    for i in range(len(x_mean_list)):
+        ax.add_artist(plt.Circle((y_mean_list[i]*5, x_mean_list[i]*5), radius = r_mean_list[i]*5,color = 'r', fill=None, lw = 0.2))
+    plt.colorbar()
+    return
+
+
