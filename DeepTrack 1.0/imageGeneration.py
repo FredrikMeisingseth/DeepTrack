@@ -319,67 +319,161 @@ def get_label(image_parameters=get_image_parameters_preconfig()):
     return target_binary_image
 
 
-def get_batch(get_image_parameters=lambda: get_image_parameters_preconfig(),
+def get_batch(get_image_parameters_function=lambda: get_image_parameters_preconfig(),
               batch_size=32):
+    """A batch is a tuple with three elements:
+    batch_images: numpy array of dimensions (batch_size, pixels_x, pixels_y, color_channels),
+        where color_channels = 1
+    batch_labels: numpy array of dimensions (batch_size, pixels_x, pixels_y, number_of_features),
+        where number_of_features = 5
+    batch_predictions: numpy array of dimensions (batch_size, pixels_x, pixels_y, number_of_features),
+        where number_of_features = 5.
+
+    Inputs:
+    get_image_parameters_function: the function that generates image parameters
+    batch_size
+
+    Outputs:
+    batch: tuple of (batch_images, batch_labels, batch_predictions, batch_image_parameters),
+        where batch_image_parameters is None here
+    """
+
     from numpy import zeros
     import time
 
-    example_image_parameters = get_image_parameters()
+    example_image_parameters = get_image_parameters_function()
+
     image_size = example_image_parameters['Image Size']
-    image_batch = zeros((batch_size, image_size, image_size,
-                         1))  # possibly save in smaller format? + Preallocating assumes equal image-sizes!
-    label_batch = zeros((batch_size, image_size, image_size,
-                         5))  # possibly save in smaller format? + Preallocating assumes equal image-sizes!
+    batch_images = zeros((batch_size, image_size, image_size,
+                          1))  # possibly save in smaller format? + Preallocating assumes equal image-sizes!
+
+    batch_labels = zeros((batch_size, image_size, image_size,
+                          5))  # possibly save in smaller format? + Preallocating assumes equal image-sizes!
+    batch_predictions = None
 
     t = time.time()
+
     for i in range(batch_size):
         image_parameters = get_image_parameters()
-        image_batch[i, :, :, 0] = get_image(image_parameters)
-        label_batch[i, :, :, 0:5] = get_label(image_parameters)
+        batch_images[i, :, :, 0] = get_image(image_parameters)
+        batch_labels[i, :, :, 0:5] = get_label(image_parameters)
 
     time_taken = time.time() - t
 
     print("Time taken for batch generation of size " + str(batch_size) + ": " + str(time_taken) + " s.")
 
-    return image_batch, label_batch
+    return batch_images, batch_labels, batch_predictions
 
 
-def save_batch(batch, image_path='data', label_path='data', image_filename='image', label_filename='label'):
+def save_batch(batch, image_path='data', label_path='data', prediction_path='data', save_images=True,
+               save_labels=True, save_predictions=True):
+    """Method to save batches. For each element of the batch, if save_(element) is true, the method checks if the
+    element is None. If it isn't, it's saved in the folder (element)_path. If it is, a warning is printed.
+    """
     import cv2
     import numpy as np
     import os
 
-    (image_batch, label_batch) = batch
-    (batch_size) = image_batch.shape[0]
-    if not os.path.isdir(image_path):
-        os.mkdir(image_path)
-        print("Created path " + image_path)
-    if not os.path.isdir(label_path):
-        os.mkdir(label_path)
-        print("Created path " + label_path)
+    IMAGE_FILENAME = 'image'
+    LABEL_FILENAME = 'label'
+    PREDICTION_FILENAME = 'prediction'
 
-    for i in range(batch_size):
-        image = (image_batch[i] * 255).astype(np.uint8)
-        cv2.imwrite("%s/%s%d.png" % (image_path, image_filename, i), image)
-        np.save("%s/%s%d" % (label_path, label_filename, i), label_batch[i])
+    (batch_images, batch_labels, batch_predictions) = batch
+
+    # save images
+    if save_images:
+        if batch_images is not None:
+            batch_size = batch_images.shape[0]
+            if not (os.path.isdir(image_path)):
+                os.mkdir(image_path)
+            for i in range(batch_size):
+                image = (batch_images[i] * 255).astype(np.uint8)
+                cv2.imwrite("%s/%s%d.png" % (image_path, IMAGE_FILENAME, i), image)
+        else:
+            print("Cannot save images, batch_images is None!")
+
+    # save labels
+    if save_labels:
+        if batch_labels is not None:
+            batch_size = batch_labels.shape[0]
+            if not os.path.isdir(label_path):
+                os.mkdir(label_path)
+                print("Created path " + label_path)
+            for i in range(batch_size):
+                np.save("%s/%s%d" % (label_path, LABEL_FILENAME, i), batch_labels[i])
+        else:
+            print("Cannot save labels, batch_labels is None!")
+
+    # save predictions
+    if save_predictions:
+        if batch_predictions is not None:
+            batch_size = batch_predictions.shape[0]
+            if not os.path.isdir(prediction_path):
+                os.mkdir(prediction_path)
+                print("Created path " + prediction_path)
+            for i in range(batch_size):
+                np.save("%s/%s%d" % (prediction_path, PREDICTION_FILENAME, i), batch_predictions[i])
+        else:
+            print("Cannot save predictions, batch_predictions is None!")
 
     return
 
 
-def load_batch(batch_size, image_path='data', label_path='data', image_filename='image', label_filename='label'):
+def load_batch(batch_size, image_path='data', label_path='data', prediction_path='data', load_images=True,
+               load_labels=True, load_predictions=True):
+    """Method to load bathes saved using save_batch. A batch of length batch_size is loaded. For each element  of the
+    batch, if load_(element) is True, the method checks if (element)_path exists. If it does, the element is loaded. If
+    not, a warning message is printed.
+    """
     from skimage.io import imread
     import numpy as np
+    import os
 
-    image_shape = imread("%s/%s%d.png" % (image_path, image_filename, 0)).shape
-    label_shape = np.load("%s/%s%d.npy" % (label_path, label_filename, 0)).shape
-    image_batch = np.zeros((batch_size,) + image_shape + (1,))
-    label_batch = np.zeros((batch_size,) + label_shape)
+    IMAGE_FILENAME = 'image'
+    LABEL_FILENAME = 'label'
+    PREDICTION_FILENAME = 'prediction'
 
-    for j in range(batch_size):
-        image_batch[j, :, :, 0] = imread("%s/%s%d.png" % (image_path, image_filename, j))/255
-        label_batch[j] = np.load("%s/%s%d.npy" % (label_path, label_filename, j))
+    batch_images = None
+    batch_labels = None
+    batch_predictions = None
 
-    return image_batch, label_batch
+    # load images, print warning if load_images is true but image file file could not be found
+    if load_images:
+        filename = ("%s/%s%d.png" % (image_path, IMAGE_FILENAME, 0))
+        try:
+            image_shape = imread(filename).shape
+            batch_images = np.zeros((batch_size,) + image_shape + (1,))
+            for j in range(batch_size):
+                filename = ("%s/%s%d.png" % (image_path, IMAGE_FILENAME, j))
+                batch_images[j, :, :, 0] = imread(filename) / 255
+        except FileNotFoundError:
+            print("Image %s not found!" % filename)
+
+    # load labels, print warning if load_labels is true but label file could not be found
+    if load_labels:
+        filename = ("%s/%s%d.npy" % (label_path, LABEL_FILENAME, 0))
+        try:
+            label_shape = np.load(filename).shape
+            batch_labels = np.zeros((batch_size,) + label_shape)
+            for j in range(batch_size):
+                filename = ("%s/%s%d.npy" % (label_path, LABEL_FILENAME, j))
+                batch_labels[j] = np.load(filename)
+        except FileNotFoundError:
+            print("Label %s not found!" % filename)
+
+    # load predictions, print warning if load_predictions is true but prediction file could not be found
+    if load_predictions:
+        filename = ("%s/%s%d.npy" % (prediction_path, PREDICTION_FILENAME, 0))
+        try:
+            prediction_shape = np.load(filename).shape
+            batch_predictions = np.zeros((batch_size,) + prediction_shape)
+            for j in range(batch_size):
+                filename = ("%s/%s%d.npy" % (prediction_path, PREDICTION_FILENAME, j))
+                batch_predictions[j] = np.load(filename)
+        except FileNotFoundError:
+            print("Could not find predictions directory!")
+
+    return batch_images, batch_labels, batch_predictions
 
 
 def generator_for_training(get_batch=lambda: get_batch(), aug_parameters=get_aug_parameters()):
@@ -528,3 +622,43 @@ def get_particle_centers(label):
         r_mean_list.append(mean(r_list))
         i_mean_list.append(mean(i_list))
     return (x_mean_list, y_mean_list, r_mean_list, i_mean_list)
+
+
+def apply_sigmoid(batch_labels_or_predictions):
+    """ Applies the sigmoid function on the first feature of the label or prediction
+    Inputs:
+    batch_labels_or_predictions: either a batch_labels or a batch_predictions, so second or third element of a batch
+    Outputs:
+    batch_labels_or_batch_predictions: same as input, but after applying sigmoid to the first feature
+    """
+    import numpy as np
+
+    first_feature = batch_labels_or_predictions[:, :, :, 0]
+    first_feature_after_sigmoid = 1 / (1 + np.exp(-first_feature))
+    batch_labels_or_predictions[:, :, :, 0] = first_feature_after_sigmoid
+    return batch_labels_or_predictions
+
+
+def apply_cutoff(batch_labels_or_predictions, cutoff, apply_sigmoid=False):
+    """ Applies a cutoff on the first feature of the label or prediction. This means that all values in the first
+    feature >= cutoff are set to 1, while the rest are set to 0.
+    Inputs:
+    batch_labels_or_predictions: either a batch_labels or a batch_predictions, so second or third element of a batch
+    cutoff: the cutoff value
+    apply_sigmoid: boolean that specifies whether or not this method should apply a sigmoid to the first feature of
+        batch_labels_or_predictions before applying the cutoff
+    Outputs:
+    batch_labels_or_batch_predictions: same as input, but after applying cutoff (and possibly sigmoid) to the first
+        feature
+    """
+    import numpy as np
+
+    first_feature = batch_labels_or_predictions[:, :, :, 0]
+    if (apply_sigmoid):
+        first_feature = 1 / (1 + np.exp(-first_feature))
+
+    first_feature[first_feature >= cutoff] = 1
+    first_feature[first_feature < cutoff] = 0
+
+    batch_labels_or_predictions[:, :, :, 0] = first_feature
+    return batch_labels_or_predictions
