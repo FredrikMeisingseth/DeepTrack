@@ -10,8 +10,8 @@ def create_unet(pretrained_weights=None, input_size=(None, None, 1)):
     2)  For each pixel, if the first feature label is 1 (there is a particle here), then calculate the L1 loss for the
         remaining features.
     The inputs to the network are images with values within [0:255], the outputs (and labels) are:
-    1)      [0:1]
-    2-4)    Can take on any values ([0:image_size/2])
+    1)      Can take on any values -inf to inf, to make it into a probability, put it through a sigmoid function
+    2-4)    Can take on any values ([-image_size/2:image_size/2])
     5)      [0:1]
     Inputs:
     pretrained_weights: if not None, loads the pretrained weights into the network
@@ -67,10 +67,6 @@ def create_unet(pretrained_weights=None, input_size=(None, None, 1)):
     conv9 = Conv2D(8, 3, activation='relu', padding='same', kernel_initializer='he_normal')(merge9)
     conv9 = Conv2D(8, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv9)
 
-    # conv9 = Conv2D(2, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal')(conv9)
-    # output = Conv2D(1, 1, activation = 'sigmoid')(conv9)
-
-    # conv9 = Conv2D(5, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv9)
     output = Conv2D(5, 1, activation=None, padding='same')(conv9)
 
     model = Model(inputs=[input], outputs=[output])
@@ -185,6 +181,9 @@ def loss(y_true, y_pred):
     particle_pred = 1 / (1 + K.exp(-P))
 
     loss = weighted_crossentropy(particle_true, particle_pred)
+
+    # x, y and r are in the interval approx (-3,3), while i is in the interval approx (0, 0.6). Therefore, we needed to
+    # weight the i feature with 5
     feature_loss_weight = [1, 1, 1, 5]
     for feature_number in range(1, 5):
         feature_true = K.flatten(y_true[:, :, :, feature_number])
@@ -232,7 +231,7 @@ def r_loss(y_true, y_pred):
 
 
 def i_loss(y_true, y_pred):
-    feature_number = 4;
+    feature_number = 4
     feature_weight = 5
     return feature_loss(y_true, y_pred, feature_number, feature_weight)
 
