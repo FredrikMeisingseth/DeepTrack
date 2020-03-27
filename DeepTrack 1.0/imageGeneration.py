@@ -354,7 +354,7 @@ def get_batch(get_image_parameters_function=lambda: get_image_parameters_preconf
     t = time.time()
 
     for i in range(batch_size):
-        image_parameters = get_image_parameters()
+        image_parameters = get_image_parameters_function()
         batch_images[i, :, :, 0] = get_image(image_parameters)
         batch_labels[i, :, :, 0:5] = get_label(image_parameters)
 
@@ -577,11 +577,11 @@ def create_data_generator(get_image_parameters=lambda: get_image_parameters_prec
 
         def on_epoch_end(self):
             self.batch = get_batch(self.get_image_parameters, self.epoch_batch_size)
-            image_batch, label_batch = self.batch
+            batch_images, batch_labels, batch_predictions = self.batch
             from matplotlib import pyplot as plt
-            plt.imshow(image_batch[0, :, :, 0], cmap='gray')
+            plt.imshow(batch_images[0, :, :, 0], cmap='gray')
             plt.show()
-            plt.imshow(label_batch[0, :, :, 0], cmap='gray')
+            plt.imshow(batch_labels[0, :, :, 0], cmap='gray')
             plt.show()
 
         def __len__(self):
@@ -590,8 +590,8 @@ def create_data_generator(get_image_parameters=lambda: get_image_parameters_prec
         def __getitem__(self, index):
             from random import randint
             image_indices = [randint(0, self.epoch_batch_size - 1) for i in range(self.batch_size)]
-            image_batch, label_batch = self.batch
-            return image_batch[image_indices], label_batch[image_indices]
+            batch_images, batch_labels, batch_predictions = self.batch
+            return batch_images[image_indices], batch_labels[image_indices]
 
     return DataGenerator(get_image_parameters, epoch_batch_size, batch_size, len)
 
