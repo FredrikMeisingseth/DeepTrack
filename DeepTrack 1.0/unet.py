@@ -246,9 +246,11 @@ def feature_loss(y_true, y_pred, feature_number, feature_weight=1):
     feature_loss = K.sum(particle_true * feature_error) / (K.sum(particle_true) + 1e-3)
     return feature_weight * feature_loss
 
-def get_optimal_cutoff(batch_labels,batch_predictions,sample_size=100):
+def get_optimal_cutoff(batch_labels,batch_predictions,sample_size=100,x0 = 0.5):
     """Method for calculating the optimal cut-off for the predictions' first feature.
-    input
+    input: labels and predictions for a batch of images,
+           sample size - the number of label/prediction pairs to optmimize against
+           x0 - a starting guess for the cut-off
     """
     import numpy as np
     from scipy.optimize import minimize
@@ -271,7 +273,7 @@ def get_optimal_cutoff(batch_labels,batch_predictions,sample_size=100):
     for i in range(sample_size):
         label = batch_labels[i,:,:,0]
         pred = batch_predictions[i,:,:,0]
-        total_cut += minimize(func,0.5,args=(label,pred),tol=1e-6, method = 'Nelder-Mead').x[0]
+        total_cut += minimize(func,x0,args=(label,pred),tol=1e-6, method = 'Nelder-Mead').x[0]
 
     current_guess = total_cut/sample_size
 
