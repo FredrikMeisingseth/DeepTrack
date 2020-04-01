@@ -160,7 +160,7 @@ def create_multiframe_unet(pretrained_weights=None, input_size=(None, None, None
     return model
 
 
-def weighted_crossentropy(y_true, y_pred, beta=45):
+def weighted_crossentropy(y_true, y_pred, beta=30):
     """
     Assumes y_true and y_pred take on values between [0:1]
     """
