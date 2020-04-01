@@ -385,7 +385,7 @@ def save_batch(batch, image_path='data', label_path='data', prediction_path='dat
         if batch_images is not None:
             batch_size = batch_images.shape[0]
             if not (os.path.isdir(image_path)):
-                os.mkdir(image_path)
+                os.makedirs(image_path, exist_ok=True)
             for i in range(batch_size):
                 image = (batch_images[i] * 255).astype(np.uint8)
                 cv2.imwrite("%s/%s%d.png" % (image_path, IMAGE_FILENAME, i), image)
@@ -397,7 +397,7 @@ def save_batch(batch, image_path='data', label_path='data', prediction_path='dat
         if batch_labels is not None:
             batch_size = batch_labels.shape[0]
             if not os.path.isdir(label_path):
-                os.mkdir(label_path)
+                os.makedirs(label_path, exist_ok=True)
                 print("Created path " + label_path)
             for i in range(batch_size):
                 np.save("%s/%s%d" % (label_path, LABEL_FILENAME, i), batch_labels[i])
@@ -409,7 +409,7 @@ def save_batch(batch, image_path='data', label_path='data', prediction_path='dat
         if batch_predictions is not None:
             batch_size = batch_predictions.shape[0]
             if not os.path.isdir(prediction_path):
-                os.mkdir(prediction_path)
+                os.makedirs(prediction_path, exist_ok=True)
                 print("Created path " + prediction_path)
             for i in range(batch_size):
                 np.save("%s/%s%d" % (prediction_path, PREDICTION_FILENAME, i), batch_predictions[i])
@@ -579,9 +579,9 @@ def create_data_generator(get_image_parameters=lambda: get_image_parameters_prec
             self.batch = get_batch(self.get_image_parameters, self.epoch_batch_size)
             batch_images, batch_labels, batch_predictions = self.batch
             from matplotlib import pyplot as plt
-            plt.imshow(batch_images[0, :, :, 0], cmap='gray')
+            plt.imshow(batch_images[0, :, :, 0], cmap='gray', vmin = 0, vmax = 1)
             plt.show()
-            plt.imshow(batch_labels[0, :, :, 0], cmap='gray')
+            plt.imshow(batch_labels[0, :, :, 0], cmap='gray', vmin = 0, vmax = 1)
             plt.show()
 
         def __len__(self):
