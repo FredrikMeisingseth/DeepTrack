@@ -23,7 +23,7 @@ def operating_characteristics(labels, predictions):
     TP = sum(label_first_feature * prediction_first_feature)
     TN = sum((1 - label_first_feature) * (1 - prediction_first_feature))
 
-    FP = sum(label_first_feature * (1 - prediction_first_feature))
-    FN = sum((1 - label_first_feature) * prediction_first_feature)
+    FP = sum((1 - label_first_feature) * prediction_first_feature)
+    FN = sum(label_first_feature * (1 - prediction_first_feature))
 
     return P, N, TP, TN, FP, FN
