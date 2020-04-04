@@ -14,8 +14,8 @@ def operating_characteristics(labels, predictions):
     """
     import numpy as np
 
-    label_first_feature = np.flatten(labels[:, :, :, 0])
-    prediction_first_feature = np.flatten(predictions[:, :, :, 0])
+    label_first_feature = np.ndarray.flatten(labels[:, :, :, 0])
+    prediction_first_feature = np.ndarray.flatten(predictions[:, :, :, 0])
 
     P = sum(label_first_feature)
     N = sum(1 - label_first_feature)
