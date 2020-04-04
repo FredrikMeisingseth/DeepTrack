@@ -125,7 +125,6 @@ def get_particle_positions(particle_radius_list=[], image_size=128):
 
     particle_centers = []
     for radius in particle_radius_list:
-        # print('X is: ' + str(x) + ". Y is: " + str(y) + ". Radius is: " + str(radius) + ". Image size is: " + str(image_size) + '.')
         for i in range(100):
             (x, y) = (uniform(radius, image_size - radius), uniform(radius, image_size - radius))
             if all(((x - coord[0]) ** 2 + (y - coord[1]) ** 2) ** 0.5 > radius for coord in particle_centers):
@@ -139,7 +138,7 @@ def get_particle_positions(particle_radius_list=[], image_size=128):
         particle_centers_x.append(coordinates[0])
         particle_centers_y.append(coordinates[1])
 
-    return (particle_centers_x, particle_centers_y)
+    return particle_centers_x, particle_centers_y
 
 
 def get_image(image_parameters):
@@ -304,11 +303,11 @@ def get_label(image_parameters=get_image_parameters_preconfig()):
         radius = particle_radius_list[particle_index]
         intensity = particle_intensities_list[particle_index]
 
-        # loops over all pixels with center in coordinates = [ceil(center - radius): floor(center + radius)]. Adds the ones with
-        # center within radius.
+        # loops over all pixels with center in coordinates = [ceil(center - radius): floor(center + radius)]. Adds
+        # the ones with center within radius.
         for pixel_x in range(int(np.floor(center_x - radius)), int(np.ceil(center_x + radius))):
             for pixel_y in range(int(np.floor(center_y - radius)), int(np.ceil(center_y + radius))):
-                if ((pixel_x - center_x) ** 2 + (pixel_y - center_y) ** 2 <= radius ** 2):
+                if (pixel_x - center_x) ** 2 + (pixel_y - center_y) ** 2 <= radius ** 2:
                     # print('Pixel_x is: ' + str(pixel_x) + ". Pixel_y is: " + str(pixel_y) + ".")
                     target_binary_image[pixel_x, pixel_y, 0] = 1
                     target_binary_image[pixel_x, pixel_y, 1] = center_x - pixel_x
@@ -320,7 +319,7 @@ def get_label(image_parameters=get_image_parameters_preconfig()):
 
 
 def get_batch(get_image_parameters_function=lambda: get_image_parameters_preconfig(),
-              batch_size=32):
+              batch_size=32, verbose=True):
     """A batch is a tuple with three elements:
     batch_images: numpy array of dimensions (batch_size, pixels_x, pixels_y, color_channels),
         where color_channels = 1
@@ -359,8 +358,8 @@ def get_batch(get_image_parameters_function=lambda: get_image_parameters_preconf
         batch_labels[i, :, :, 0:5] = get_label(image_parameters)
 
     time_taken = time.time() - t
-
-    print("Time taken for batch generation of size " + str(batch_size) + ": " + str(time_taken) + " s.")
+    if verbose:
+        print("Time taken for batch generation of size " + str(batch_size) + ": " + str(time_taken) + " s.")
 
     return batch_images, batch_labels, batch_predictions
 
@@ -479,7 +478,7 @@ def load_batch(batch_size, image_path='data', label_path='data', prediction_path
 def generator_for_training(get_batch=lambda: get_batch(), aug_parameters=get_aug_parameters()):
     from keras.preprocessing.image import ImageDataGenerator
     import numpy as np
-    (image_batch, label_batch) = get_batch()
+    (image_batch, label_batch, prediction_batch) = get_batch()
     image_shape = image_batch.shape
     image_batch = np.reshape(image_batch, (image_shape[0], image_shape[1], image_shape[2], 1))
     label_batch = np.reshape(label_batch,
@@ -565,9 +564,9 @@ def create_data_generator(get_image_parameters=lambda: get_image_parameters_prec
 
         def __init__(self,
                      get_image_parameters=lambda: get_image_parameters_preconfig(),
-                     epoch_batch_size=1000,
-                     batch_size=32,
-                     len=100):
+                     epoch_batch_size=epoch_batch_size,
+                     batch_size=batch_size,
+                     len=len):
             'Initialization'
             self.get_image_parameters = get_image_parameters
             self.epoch_batch_size = epoch_batch_size
@@ -579,13 +578,13 @@ def create_data_generator(get_image_parameters=lambda: get_image_parameters_prec
             self.batch = get_batch(self.get_image_parameters, self.epoch_batch_size)
             batch_images, batch_labels, batch_predictions = self.batch
             from matplotlib import pyplot as plt
-            plt.imshow(batch_images[0, :, :, 0], cmap='gray', vmin = 0, vmax = 1)
+            plt.imshow(batch_images[0, :, :, 0], cmap='gray', vmin=0, vmax=1)
             plt.show()
-            plt.imshow(batch_labels[0, :, :, 0], cmap='gray', vmin = 0, vmax = 1)
+            plt.imshow(batch_labels[0, :, :, 0], cmap='gray', vmin=0, vmax=1)
             plt.show()
 
         def __len__(self):
-            return (self.len)
+            return self.len
 
         def __getitem__(self, index):
             from random import randint
@@ -621,7 +620,7 @@ def get_particle_centers(label):
         y_mean_list.append(mean(y_list))
         r_mean_list.append(mean(r_list))
         i_mean_list.append(mean(i_list))
-    return (x_mean_list, y_mean_list, r_mean_list, i_mean_list)
+    return x_mean_list, y_mean_list, r_mean_list, i_mean_list
 
 
 def sigmoid(batch_labels_or_predictions):
@@ -691,7 +690,7 @@ def visualise_batch(batch, index_of_image_to_show=0, use_predictions=True, zoom_
         batch_data = cutoff(batch_data, cutoff_value, apply_sigmoid=False)
 
     image_data = batch_data[index_of_image_to_show]
-    image = batch_images[index_of_image_to_show,:,:,0]
+    image = batch_images[index_of_image_to_show, :, :, 0]
     image = zoom(image, zoom_value)
 
     # Shows the figure
@@ -699,10 +698,10 @@ def visualise_batch(batch, index_of_image_to_show=0, use_predictions=True, zoom_
 
     fig = plt.gcf()
     ax = fig.gca()
-    plt.imshow(image, cmap='gray', vmin = 0, vmax = 1)
+    plt.imshow(image, cmap='gray', vmin=0, vmax=1)
     for i in range(len(x_mean_list)):
-        ax.add_artist(plt.Circle((y_mean_list[i]*5, x_mean_list[i]*5), radius = r_mean_list[i]*5,color = 'r', fill=None, lw = 0.2))
+        ax.add_artist(
+            plt.Circle((y_mean_list[i] * 5, x_mean_list[i] * 5), radius=r_mean_list[i] * 5, color='r', fill=None,
+                       lw=0.2))
     plt.colorbar()
     return
-
-
