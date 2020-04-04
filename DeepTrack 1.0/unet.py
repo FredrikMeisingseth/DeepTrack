@@ -246,44 +246,46 @@ def feature_loss(y_true, y_pred, feature_number, feature_weight=1):
     feature_loss = K.sum(particle_true * feature_error) / (K.sum(particle_true) + 1e-3)
     return feature_weight * feature_loss
 
-def get_optimal_cutoff(batch_labels,batch_predictions,sample_size=100,x0 = 0.5):
+
+def get_optimal_cutoff(batch_labels, batch_predictions, sample_size=100, x0=0.5, apply_sigmoid=True):
     """Method for calculating the optimal cut-off for the predictions' first feature.
     input: labels and predictions for a batch of images,
            sample size - the number of label/prediction pairs to optmimize against
            x0 - a starting guess for the cut-off
+           apply_sigmoid - boolean that specifies whether a sigmoid should be applied to predictions before calculations
     """
     import numpy as np
     from scipy.optimize import minimize
     from scipy.special import expit
 
+    # Function to be minimized. The prediction is run through a sigmoid to be translated to probabilities.
+    # Function returns the number of wrong guesses after a cut-off has been implemented.
+    def func(cut, label, pred):
+        if apply_sigmoid:
+            pred = expit(pred)
+        pred = np.where(pred > cut, 1, 0)
 
-    #Function to be minimized. The prediction is run through a sigmoid to be translated to probabilities.
-    #Function returns the number of wrong guesses after a cut-off has been implemented.
-    def func(cut,label,pred):
-        pred = expit(pred)
-        pred = np.where(pred>cut,1,0)
-        
-        return sum(sum(abs(label-pred)))
-    
-    sample_size = min([sample_size,batch_predictions.shape[0]])
+        return sum(sum(abs(label - pred)))
 
-    #Calculate the optimal cutoff
-    #Start by guessing 0.5 for optimal cutoff and then use the average result from the previous round of optimizations.
+    sample_size = min([sample_size, batch_predictions.shape[0]])
+
+    # Calculate the optimal cutoff
+    # Start by guessing 0.5 for optimal cutoff and then use the average result from the previous round of optimizations.
     total_cut = 0
     for i in range(sample_size):
-        label = batch_labels[i,:,:,0]
-        pred = batch_predictions[i,:,:,0]
-        total_cut += minimize(func,x0,args=(label,pred),tol=1e-6, method = 'Nelder-Mead').x[0]
+        label = batch_labels[i, :, :, 0]
+        pred = batch_predictions[i, :, :, 0]
+        total_cut += minimize(func, x0, args=(label, pred), tol=1e-6, method='Nelder-Mead').x[0]
 
-    current_guess = total_cut/sample_size
+    current_guess = total_cut / sample_size
 
     for k in range(2):
         total_cut = 0
         for i in range(sample_size):
-            label = batch_labels[i,:,:,0]
-            pred = batch_predictions[i,:,:,0]
-            total_cut += minimize(func,current_guess,args=(label,pred),tol=1e-6, method = 'Nelder-Mead').x[0]
-        
-        current_guess = total_cut/sample_size
+            label = batch_labels[i, :, :, 0]
+            pred = batch_predictions[i, :, :, 0]
+            total_cut += minimize(func, current_guess, args=(label, pred), tol=1e-6, method='Nelder-Mead').x[0]
+
+        current_guess = total_cut / sample_size
 
     return current_guess
