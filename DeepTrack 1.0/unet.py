@@ -172,10 +172,10 @@ def get_padded_images(batch_images):
     number_of_images = batch_images.shape[0]
 
     if batch_height % 16 != 0 or batch_width % 16 != 0:
-        n1 = batch_height % 16
-        n2 = batch_width % 16
+        n1 = 16 - batch_height % 16
+        n2 = 16 - batch_width % 16
 
-        padding_tuple = ((0, 0), (0, n1), (0, n2))
+        padding_tuple = ((0, 0), (0, n1), (0, n2), (0,0))
         padded_images = pad(batch_images, padding_tuple, mode='symmetric')
 
     else:
