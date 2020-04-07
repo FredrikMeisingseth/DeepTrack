@@ -200,7 +200,6 @@ def get_image(image_parameters):
 
     ### CALCULATE IMAGE PARTICLES
     image_particles = zeros((image_size, image_size))
-    particle_intensities_for_SNR = []
 
     # calculate the particle profiles of all particles and add them to image_particles
 
@@ -229,7 +228,7 @@ def get_image(image_parameters):
         # the intensity in the middle of the particle when Bessel order = 0. When Bessel order = 1, the middle of
         # the particle is black, and at the radius the intensity is approximately at its maximum. For higher
         # Bessel orders, there is no clear definition of the radius.
-        elliptical_distance_from_particle = 2 * sqrt((rotated_distance_x) ** 2
+        elliptical_distance_from_particle = 2 * sqrt(rotated_distance_x ** 2
                                                      + (rotated_distance_y / ellipticity) ** 2
                                                      + .001 ** 2) / particle_radius
 
@@ -701,7 +700,8 @@ def visualise_batch(batch, index_of_image_to_show=0, use_predictions=True, zoom_
     plt.imshow(image, cmap='gray', vmin=0, vmax=1)
     for i in range(len(x_mean_list)):
         ax.add_artist(
-            plt.Circle((y_mean_list[i] * 5, x_mean_list[i] * 5), radius=r_mean_list[i] * 5, color='r', fill=None,
-                       lw=0.2))
+            plt.Circle((((y_mean_list[i]) * zoom_value), ((x_mean_list[i]) * zoom_value)),
+                       radius=r_mean_list[i] * zoom_value, color='r', fill=None, lw=0.2))
+
     plt.colorbar()
     return
