@@ -703,6 +703,7 @@ def visualise_batch(batch, index_of_image_to_show=0, use_predictions=True, zoom_
     for i in range(len(x_mean_list)):
         ax.add_artist(plt.Circle((y_mean_list[i]*5, x_mean_list[i]*5), radius = r_mean_list[i]*5,color = 'r', fill=None, lw = 0.2))
     plt.colorbar()
+    plt.show()
     return
 
 

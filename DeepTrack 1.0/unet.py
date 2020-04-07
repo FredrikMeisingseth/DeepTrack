@@ -160,6 +160,58 @@ def create_multiframe_unet(pretrained_weights=None, input_size=(None, None, None
     return model
 
 
+
+    from numpy import zeros,ceil
+    batch_height = batch_images[0,:,:,0].shape[0]
+    batch_width = batch_images[0,:,:,0].shape[1]
+    number_of_images = batch_images.shape[0]
+
+    if (batch_height % 16 != 0 or batch_width % 16 != 0):
+        n1 = ceil(batch_height /16)
+        n2 = ceil(batch_width /16)
+
+        new_height = int(n1*16)
+        new_width = int(n1*16)
+
+        padded_images = zeros((number_of_images,new_height,new_width,1))
+        padded_images[:,0:batch_height,0:batch_width,:] = batch_images 
+    else:
+        padded_images = batch_images
+
+    return model.predict(padded_images)
+
+
+def get_padded_images(batch_images):
+    """
+    Method for applying a padding to the images of batch of the size of the images are not divisible by 16.
+    This is needed because the network demands input of size divisible by 16.
+    
+    """
+    from numpy import zeros,ceil
+    batch_height = batch_images[0,:,:,0].shape[0]
+    batch_width = batch_images[0,:,:,0].shape[1]
+    number_of_images = batch_images.shape[0]
+
+    if (batch_height % 16 != 0 or batch_width % 16 != 0):
+        n1 = ceil(batch_height /16)
+        n2 = ceil(batch_width /16)
+
+        new_height = int(n1*16)
+        new_width = int(n1*16)
+
+        padded_images = zeros((number_of_images,new_height,new_width,1))
+        padded_images[:,0:batch_height,0:batch_width,:] = batch_images 
+    else:
+        padded_images = batch_images
+    return padded_images
+
+
+def predict(model,batch_images):
+    padded_images = get_padded_images(batch_images)
+
+    return model.predict(padded_images)
+
+
 def weighted_crossentropy(y_true, y_pred, beta=45):
     """
     Assumes y_true and y_pred take on values between [0:1]
