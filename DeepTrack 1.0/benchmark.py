@@ -198,7 +198,7 @@ def visualize_hits_and_misses(number_frames_to_be_tracked, frames,  particle_pos
 
         # Threshold the radial distance of the predicted points
         for j in range(int(len(predicted_positions))):
-            if(predicted_positions[j][0]):
+            if(predicted_positions[j][0] == i):
                 if(predicted_positions[j] in misses):
                     # Plot the predicted points
                     plt.plot(predicted_positions[j][2],
