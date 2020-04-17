@@ -372,7 +372,6 @@ def get_batch(get_image_parameters_function=lambda: get_image_parameters_preconf
     else:
         return batch_images, batch_labels, batch_predictions
 
-
 def save_batch(batch, image_path='data', label_path='data', prediction_path='data', save_images=True,
                save_labels=True, save_predictions=True):
     """Method to save batches. For each element of the batch, if save_(element) is true, the method checks if the
