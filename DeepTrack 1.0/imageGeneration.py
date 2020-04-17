@@ -318,7 +318,7 @@ def get_label(image_parameters=get_image_parameters_preconfig()):
 
 
 def get_batch(get_image_parameters_function=lambda: get_image_parameters_preconfig(),
-              batch_size=32, verbose=True, include_particle_positions_radiuses_and_intensities=False):
+              batch_size=32, verbose=True, include_particle_positions_radii_and_intensities=False):
     """A batch is a tuple with three elements:
     batch_images: numpy array of dimensions (batch_size, pixels_x, pixels_y, color_channels),
         where color_channels = 1
@@ -351,27 +351,29 @@ def get_batch(get_image_parameters_function=lambda: get_image_parameters_preconf
 
     t = time.time()
 
-    if include_particle_positions_radiuses_and_intensities: 
-        particle_positions_and_radiuses_and_intensities = []
+    if include_particle_positions_radii_and_intensities:
+        batch_particle_positions_and_radii_and_intensities = []
 
     for i in range(batch_size):
         image_parameters = get_image_parameters_function()
         batch_images[i, :, :, 0] = get_image(image_parameters)
         batch_labels[i, :, :, 0:5] = get_label(image_parameters)
 
-        if include_particle_positions_radiuses_and_intensities:
-            particle_positions_and_radiuses_and_intensities.append((image_parameters['Particle Center X List'],
-                                                                    image_parameters['Particle Center Y List'],
-                                                                    image_parameters['Particle Radius List']))
+        if include_particle_positions_radii_and_intensities:
+            batch_particle_positions_and_radii_and_intensities.append((image_parameters['Particle Center X List'],
+                                                                       image_parameters['Particle Center Y List'],
+                                                                       image_parameters['Particle Radius List'],
+                                                                       image_parameters['Particle Intensities List']))
 
     time_taken = time.time() - t
     if verbose:
         print("Time taken for batch generation of size " + str(batch_size) + ": " + str(time_taken) + " s.")
 
-    if include_particle_positions_radiuses_and_intensities:
-        return batch_images, batch_labels, batch_predictions, particle_positions_and_radiuses_and_intensities
+    if include_particle_positions_radii_and_intensities:
+        return batch_images, batch_labels, batch_predictions, batch_particle_positions_and_radii_and_intensities
     else:
         return batch_images, batch_labels, batch_predictions
+
 
 def save_batch(batch, image_path='data', label_path='data', prediction_path='data', save_images=True,
                save_labels=True, save_predictions=True):
@@ -642,7 +644,7 @@ def cutoff(batch_labels_or_predictions, cutoff_value, apply_sigmoid=False):
 
 
 def visualise_batch(batch, index_of_image_to_show=0, use_predictions=True, zoom_value=5.0, apply_cutoff=False,
-                    cutoff_value=0.5, apply_sigmoid=False, show_colorbar = True):
+                    cutoff_value=0.5, apply_sigmoid=False, show_colorbar=True):
     """Method to visualise image and label/prediction from batch. The data from the label/prediction is visualised by
         drawing out circles around particles. The position and size of the circles is calculated using
         get_particle_centers.
