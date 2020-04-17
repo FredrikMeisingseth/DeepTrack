@@ -575,11 +575,11 @@ def create_data_generator(get_image_parameters=lambda: get_image_parameters_prec
     return DataGenerator(get_image_parameters, epoch_batch_size, batch_size, len)
 
 
-def get_particle_centers(label):
+def get_particle_positions_radii_and_intensities(label_or_prediction):
     from skimage import measure
     from statistics import mean
     from numpy import argwhere
-    (label_id, number_of_particles) = measure.label(label[:, :, 0], return_num=True)
+    (label_id, number_of_particles) = measure.label(label_or_prediction[:, :, 0], return_num=True)
     # Bra namn
     x_mean_list = []
     y_mean_list = []
@@ -592,10 +592,10 @@ def get_particle_centers(label):
         i_list = []
         coords = argwhere(label_id == particle_id)
         for coord in coords:
-            x_list.append(coord[0] + label[coord[0], coord[1], 1])
-            y_list.append(coord[1] + label[coord[0], coord[1], 2])
-            r_list.append(label[coord[0], coord[1], 3])
-            i_list.append(label[coord[0], coord[1], 4])
+            x_list.append(coord[0] + label_or_prediction[coord[0], coord[1], 1])
+            y_list.append(coord[1] + label_or_prediction[coord[0], coord[1], 2])
+            r_list.append(label_or_prediction[coord[0], coord[1], 3])
+            i_list.append(label_or_prediction[coord[0], coord[1], 4])
         x_mean_list.append(mean(x_list))
         y_mean_list.append(mean(y_list))
         r_mean_list.append(mean(r_list))
