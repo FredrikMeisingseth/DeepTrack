@@ -674,7 +674,7 @@ def visualise_batch(batch, index_of_image_to_show=0, use_predictions=True, zoom_
     image = zoom(image, zoom_value)
 
     # Shows the figure
-    (x_mean_list, y_mean_list, r_mean_list, i_mean_list) = get_particle_centers(image_data)
+    (x_mean_list, y_mean_list, r_mean_list, i_mean_list) = get_particle_positions_radii_and_intensities(image_data)
 
     fig = plt.gcf()
     ax = fig.gca()

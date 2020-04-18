@@ -105,6 +105,7 @@ def get_operating_characteristics_scanning_box(predicted_particle_positions_x, p
 
     return operating_characteristics
 
+
 def distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=1.0):
     """
     Method that calculates the distance from the upper left corner of the ROC space for a given TPR and FPR
@@ -127,7 +128,7 @@ def centroids_DT(
         particle_positions_y,
         particle_radial_distance,
         particle_interdistance,
-):
+    ):
     import numpy as np
 
     particle_number = 0
