@@ -26,13 +26,14 @@ def get_operating_characteristics(labels, predictions):
     FP = sum((1 - label_first_feature) * prediction_first_feature)
     FN = sum(label_first_feature * (1 - prediction_first_feature))
 
-    return P, N, TP, TN, FP, FN
+    return P, N, TP, FP, TN, FN
 
 
 def get_operating_characteristics_scanning_box(predicted_particle_positions_x, predicted_particle_positions_y,
                                                particle_positions_x, particle_positions_y,
                                                image_size_x, image_size_y,
-                                               scanning_box_size_x, scanning_box_size_y):
+                                               scanning_box_size_x, scanning_box_size_y,
+                                               scanning_box_step_x, scanning_box_step_y):
     """ Method that returns the operating characteristics using a scanning box approach.
     Inputs:
     predicted_particle_positions_x: list of predicted x-coordinates of the particles
@@ -41,41 +42,47 @@ def get_operating_characteristics_scanning_box(predicted_particle_positions_x, p
     particle_positions_y: list of y-coordinates of the particles
     image_size_x: x-size of the image. We represent images as matrices, so this is usually the vertical side-length.
     image_size_y: y-size of the image. This is usually the horizontal side length.
-    scanning_box_size_x: x-size of the scanning box. If image_size_x isn't divisible by scanning_box_size_x, the image
-        is extended to make it fit the extra part of the scanning box.
-    scanning_box_size_y: y-size of the scanning box. If image_size_y isn't divisible by scanning_box_size_y, the image
-        is extended to make it fit the extra part of the scanning box.
+    scanning_box_size_x: x-size of the scanning box.
+    scanning_box_size_y: y-size of the scanning box.
+    scanning_box_step_x: the x-coordinate of the start of the next scanning box relative to the current one.
+    scanning_box_step_y: the y-coordinate of the start of the next scanning box relative to the current one.
 
     Notes:
-        1) If a particle is exactly on the edge of the last scanning box, it will not be counted
+        1) If a particle is exactly on the far edge of the image, it will not be counted
 
     Outputs:
         operating_characteristics
     """
     from numpy import meshgrid, arange, ndarray
-    scanning_box_coordinates_x, scanning_box_coordinates_y = meshgrid(arange(0, image_size_x, scanning_box_size_x),
-                                                                      arange(0, image_size_y, scanning_box_size_y),
-                                                                      sparse=False,
-                                                                      indexing='ij')
+    scanning_box_stops_x, scanning_box_stops_y = meshgrid(
+        arange(scanning_box_size_x, image_size_x + scanning_box_step_x, scanning_box_step_x),
+        arange(scanning_box_size_y, image_size_y + scanning_box_step_y, scanning_box_step_y),
+        sparse=False,
+        indexing='ij')
 
     operating_characteristics = [0, 0, 0, 0, 0, 0]
-    for scanning_box_start_x, scanning_box_start_y in zip(ndarray.flatten(scanning_box_coordinates_x),
-                                                                                ndarray.flatten(scanning_box_coordinates_y)):
-        scanning_box_stop_x = scanning_box_start_x + scanning_box_size_x
-        scanning_box_stop__y = scanning_box_start_y + scanning_box_size_y
+    for scanning_box_stop_x, scanning_box_stop_y in zip(ndarray.flatten(scanning_box_stops_x),
+                                                        ndarray.flatten(scanning_box_stops_y)):
+        scanning_box_start_x = scanning_box_stop_x - scanning_box_size_x
+        scanning_box_start_y = scanning_box_stop_y - scanning_box_size_y
         particles_in_box = 0
         predicted_particles_in_box = 0
 
         for particle_position_x, particle_position_y in zip(particle_positions_x, particle_positions_y):
             if scanning_box_start_x <= particle_position_x < scanning_box_stop_x:
-                if scanning_box_start_y <= particle_position_y < scanning_box_stop__y:
+                if scanning_box_start_y <= particle_position_y < scanning_box_stop_y:
                     particles_in_box += 1
 
         for predicted_particle_position_x, predicted_particle_position_y in zip(predicted_particle_positions_x,
                                                                                 predicted_particle_positions_y):
             if scanning_box_start_x <= predicted_particle_position_x < scanning_box_stop_x:
-                if scanning_box_start_y <= predicted_particle_position_y < scanning_box_stop__y:
+                if scanning_box_start_y <= predicted_particle_position_y < scanning_box_stop_y:
                     predicted_particles_in_box += 1
+
+        # if particles_in_box != predicted_particles_in_box:
+        #     print("Particles in box " + str(particles_in_box))
+        #     print("Predicted particles in box " + str(predicted_particles_in_box))
+        #     print(scanning_box_start_x, scanning_box_start_y)
 
         P_box = particles_in_box
         if particles_in_box == 0:
@@ -102,24 +109,105 @@ def get_operating_characteristics_scanning_box(predicted_particle_positions_x, p
 
         operating_characteristics_box = [P_box, N_box, TP_box, FP_box, TN_box, FN_box]
         operating_characteristics = [sum(x) for x in zip(operating_characteristics, operating_characteristics_box)]
-
     return operating_characteristics
 
-def distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=1.0):
+
+def get_operating_characteristics_scanning_box_optimized(predicted_particle_positions_x, predicted_particle_positions_y,
+                                                         particle_positions_x, particle_positions_y,
+                                                         image_size_x, image_size_y,
+                                                         scanning_box_size_x, scanning_box_size_y,
+                                                         scanning_box_step_x, scanning_box_step_y):
+    """ Method that returns the operating characteristics using a scanning box approach.
+    Inputs:
+    predicted_particle_positions_x: list of predicted x-coordinates of the particles
+    predicted_particle_positions_y: list of predicted y-coordinates of the particles
+    particle_positions_x: list of x-coordinates of the particles
+    particle_positions_y: list of y-coordinates of the particles
+    image_size_x: x-size of the image. We represent images as matrices, so this is usually the vertical side-length.
+    image_size_y: y-size of the image. This is usually the horizontal side length.
+    scanning_box_size_x: x-size of the scanning box.
+    scanning_box_size_y: y-size of the scanning box.
+    scanning_box_step_x: the x-coordinate of the start of the next scanning box relative to the current one.
+    scanning_box_step_y: the y-coordinate of the start of the next scanning box relative to the current one.
+
+    Notes:
+        1) If a particle is exactly on the far edge of the image, it will not be counted
+
+    Outputs:
+        operating_characteristics
+    """
+    from numpy import meshgrid, arange, ndarray, ceil, floor
+    from scipy import sparse
+    number_of_scanning_boxes_x = ceil((image_size_x + scanning_box_step_x - scanning_box_size_x) / scanning_box_step_x)
+    number_of_scanning_boxes_y = ceil((image_size_y + scanning_box_step_y - scanning_box_size_y) / scanning_box_step_y)
+
+    scanning_boxes_matrix_particles = sparse.lil_matrix((int(number_of_scanning_boxes_x),
+                                                         int(number_of_scanning_boxes_y)))
+    scanning_boxes_matrix_predicted_particles = sparse.lil_matrix((int(number_of_scanning_boxes_x),
+                                                                   int(number_of_scanning_boxes_y)))
+
+    for particle_position_x, particle_position_y in zip(particle_positions_x, particle_positions_y):
+        start_index_x = int(ceil((particle_position_x - scanning_box_size_x) / scanning_box_step_x))
+        stop_index_x = int(floor(particle_position_x / scanning_box_step_x))
+
+        start_index_y = int(ceil((particle_position_y - scanning_box_size_y) / scanning_box_step_y))
+        stop_index_y = int(floor(particle_position_y / scanning_box_step_y))
+
+        for index_x in range(start_index_x, stop_index_x + 1):
+            for index_y in range(start_index_y, stop_index_y + 1):
+                try:
+                    scanning_boxes_matrix_particles[index_x, index_y] += 1
+                except IndexError:
+                    continue
+
+    for predicted_particle_position_x, predicted_particle_position_y in zip(predicted_particle_positions_x,
+                                                                            predicted_particle_positions_y):
+        start_index_x = int(ceil((predicted_particle_position_x - scanning_box_size_x) / scanning_box_step_x))
+        stop_index_x = int(floor(predicted_particle_position_x / scanning_box_step_x))
+
+        start_index_y = int(ceil((predicted_particle_position_y - scanning_box_size_y) / scanning_box_step_y))
+        stop_index_y = int(floor(predicted_particle_position_y / scanning_box_step_y))
+
+        for index_x in range(start_index_x, stop_index_x + 1):
+            for index_y in range(start_index_y, stop_index_y + 1):
+                try:
+                    scanning_boxes_matrix_predicted_particles[index_x, index_y] += 1
+                except IndexError:
+                    continue
+
+    n = sparse.csr_matrix(scanning_boxes_matrix_particles)
+    m = sparse.csr_matrix(scanning_boxes_matrix_predicted_particles)
+
+    P = sparse.csr_matrix.sum(n)
+    N = number_of_scanning_boxes_x * number_of_scanning_boxes_y - sparse.csr_matrix.sum(n > 0)
+    TP = sparse.csr_matrix.sum(sparse.csr_matrix.minimum(n, m))
+    FP = sparse.csr_matrix.sum(sparse.csr_matrix.maximum(n, m) - n)
+    n_nonzero_boolean = n > 0
+    m_nonzero_boolean = m > 0
+    TN = number_of_scanning_boxes_x * number_of_scanning_boxes_y - sparse.csr_matrix.sum(n_nonzero_boolean +
+                                                                                         m_nonzero_boolean)
+
+    FN = P - TP
+
+    return P, N, TP, FP, TN, FN
+
+
+def distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=100):
     """
     Method that calculates the distance from the upper left corner of the ROC space for a given TPR and FPR
     Inputs:
         TPR - True Positive Rate
         FPR - False Positive Rate
         FPR_weight - instead of just FPR, FPR*FPR_weight is used in the calculation. This is usually a value between 0
-                     and 1. A small value means that changes in FPR affect the distance less.
+                     and 1. A small value means that changes in FPR affect the distance more.
     """
-    P, N, TP, TN, FP, FN = operating_characteristics
+    P, N, TP, FP, TN, FN = operating_characteristics
 
     TPR = TP / P
     FPR = FP / N
 
-    return ((1 - TPR) ** 2 + (FPR * FPR_weight) ** 2) ** (1 / 2)
+    distance = ((1 - TPR) ** 2 + (FPR * FPR_weight) ** 2) ** 0.5
+    return distance
 
 
 def centroids_DT(
