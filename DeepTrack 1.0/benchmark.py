@@ -192,7 +192,7 @@ def get_operating_characteristics_scanning_box_optimized(predicted_particle_posi
     return P, N, TP, FP, TN, FN
 
 
-def distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=100):
+def distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=100.0):
     """
     Method that calculates the distance from the upper left corner of the ROC space for a given TPR and FPR
     Inputs:
@@ -215,7 +215,7 @@ def centroids_DT(
         particle_positions_y,
         particle_radial_distance,
         particle_interdistance,
-):
+    ):
     import numpy as np
 
     particle_number = 0
@@ -304,96 +304,163 @@ def get_predicted_positions_DT(particle_radial_distance_threshold,
     return predicted_positions
 
 
-def get_predicted_positions_unet(number_frames_to_be_tracked, batch_predictions, video_width, video_height,
-                                 cutoff_value=0.9):
+def get_predicted_positions_unet(number_frames_to_be_tracked, batch_predictions,video_width, video_height, cutoff_value = 0.9):
     import imageGeneration as IG
     predicted_positions = []
-    predictions = IG.cutoff(batch_predictions, cutoff_value, apply_sigmoid=True)
+    predictions = IG.cutoff(batch_predictions,cutoff_value, apply_sigmoid=True)
 
     for i in range(number_frames_to_be_tracked):
 
-        (x_mean_list, y_mean_list, r_mean_list, i_mean_list) = IG.get_particle_centers(predictions[i])
+        (x_mean_list, y_mean_list, r_mean_list, i_mean_list) = IG.get_particle_positions_radii_and_intensities(predictions[i])
 
         for j in range(len(x_mean_list)):
             x_position = x_mean_list[j]
             y_position = y_mean_list[j]
             frame_index = i
-            if (x_position <= video_width and y_position <= video_height):
-                predicted_positions.append((frame_index, x_position, y_position))
-
+            if(x_position <= video_width and y_position <= video_height):
+                predicted_positions.append((frame_index,x_position,y_position))
+    
     return predicted_positions
 
 
-def hits_and_misses(number_frames_to_be_tracked, predicted_positions, particle_positions_and_radiuses,
-                    return_misses=False):
+def hits_and_misses(number_frames_to_be_tracked, predicted_positions, particle_positions_and_radiuses, long_return = False):
     from numpy import sqrt, zeros
 
     nr_predictions = zeros(number_frames_to_be_tracked)
+    nr_total_predictions = 0
     nr_real_particles = zeros(number_frames_to_be_tracked)
-    nr_hits = zeros(number_frames_to_be_tracked)
-    nr_misses = zeros(number_frames_to_be_tracked)
-    misses = []
+    nr_true_positives = zeros(number_frames_to_be_tracked)
+    nr_false_positives = zeros(number_frames_to_be_tracked)
+    true_positives = []
+    true_positive_links = []
+    false_positives = []
+    MAE_distance = 0
+    MSE_distance = 0
+
 
     for i in range(int(number_frames_to_be_tracked)):
         predictions_for_frame_i = []
         for j in range(len(predicted_positions)):
-            if (predicted_positions[j][0] == i):
+            if(predicted_positions[j][0] == i):
                 predictions_for_frame_i.append(predicted_positions[j])
-
+        
         nr_predictions[i] = len(predictions_for_frame_i)
         nr_real_particles[i] = len(particle_positions_and_radiuses[i][0])
-
+        
         for j in range(int(nr_predictions[i])):
             hasHit = False
+            best_match = (None,None,None)
+            shortest_distance = 99999999
+            
             for part in range(int(nr_real_particles[i])):
-                distance_x = (predictions_for_frame_i[j][1] - particle_positions_and_radiuses[i][0][part]) ** 2
-                distance_y = (predictions_for_frame_i[j][2] - particle_positions_and_radiuses[i][1][part]) ** 2
+                distance_x = (predictions_for_frame_i[j][1] - particle_positions_and_radiuses[i][0][part])**2
+                distance_y = (predictions_for_frame_i[j][2] - particle_positions_and_radiuses[i][1][part])**2
                 distance = sqrt(distance_x + distance_y)
 
-                if (distance < particle_positions_and_radiuses[i][2][part]):
+                if(distance < particle_positions_and_radiuses[i][2][part]):
                     hasHit = True
+                    
+                    
+                    if(distance < shortest_distance):
+                        shortest_distance = distance
+                        best_match = predictions_for_frame_i[j]
+                        best_match_index = part
 
-            if (hasHit):
-                nr_hits[i] += 1
-            else:
-                misses.append(predictions_for_frame_i[j])
-
-        nr_misses[i] = nr_predictions[i] - nr_hits[i]
-
-    if (return_misses):
-        return nr_real_particles, nr_predictions, nr_hits, nr_misses, misses
+            if(hasHit):
+                MAE_distance += shortest_distance
+                MSE_distance += shortest_distance**2
+                nr_true_positives[i] += 1 
+                true_positives.append(best_match)
+                true_positive_links.append((i,int(nr_total_predictions + j),best_match_index))
+            else: 
+                nr_false_positives[i] += 1
+                false_positives.append(predictions_for_frame_i[j])
+            
+        nr_total_predictions += nr_predictions[i]
+                        
+                    
+    if(long_return):
+        MAE_distance = MAE_distance/len(true_positives)
+        MSE_distance = MSE_distance/len(true_positives)
+        return nr_real_particles,nr_predictions,nr_true_positives,nr_false_positives,true_positives, false_positives, true_positive_links,MAE_distance,MSE_distance
     else:
-        return nr_real_particles, nr_predictions, nr_hits, nr_misses
+        return nr_real_particles,nr_predictions,nr_true_positives,nr_false_positives
 
 
-def visualize_hits_and_misses(number_frames_to_be_tracked, frames, particle_positions_and_radiuses, predicted_positions,
-                              misses):
+def visualize_hits_and_misses(number_frames_to_be_tracked, frames,  particle_positions_and_radiuses, predicted_positions, FP,links):
     import matplotlib.pyplot as plt
-
+    
     ### Visualize tracked frames
     for i in range(number_frames_to_be_tracked):
-
+        
         # Show frame
         fig = plt.figure(figsize=(10, 10))
         plt.imshow(frames[i], cmap='gray', vmin=0, vmax=1)
         nr_real_particles = len(particle_positions_and_radiuses[i][0])
 
-        # Threshold the radial distance of the predicted points
         for j in range(int(len(predicted_positions))):
-            if (predicted_positions[j][0] == i):
-                if (predicted_positions[j] in misses):
+            if(predicted_positions[j][0] == i):
+                if(predicted_positions[j] in FP):
                     # Plot the predicted points
                     plt.plot(predicted_positions[j][2],
-                             predicted_positions[j][1], '.r')
+                            predicted_positions[j][1], '.r')
                 else:
                     # Plot the predicted points
                     plt.plot(predicted_positions[j][2],
-                             predicted_positions[j][1], '.b')
-
+                            predicted_positions[j][1], '.b')
+                    
+        found_particles = []
+        for item in links:
+            if(item[0] == i):
+                found_particles.append((item[0],item[2]))
+        
         for part in range(nr_real_particles):
-            plt.plot(particle_positions_and_radiuses[i][1][part],
-                     particle_positions_and_radiuses[i][0][part], '^m')
-            circle = plt.Circle(
-                (particle_positions_and_radiuses[i][1][part], particle_positions_and_radiuses[i][0][part]),
-                particle_positions_and_radiuses[i][2][part], color='m', fill=False)
-            plt.gcf().gca().add_artist(circle)
+            if((i,part) in found_particles):
+                plt.plot(particle_positions_and_radiuses[i][1][part],
+                                particle_positions_and_radiuses[i][0][part], '^g')
+                circle = plt.Circle((particle_positions_and_radiuses[i][1][part], particle_positions_and_radiuses[i][0][part]), particle_positions_and_radiuses[i][2][part], color='g', fill=False)
+                plt.gcf().gca().add_artist(circle)
+            else:
+                plt.plot(particle_positions_and_radiuses[i][1][part],
+                                    particle_positions_and_radiuses[i][0][part], '^m')
+                circle = plt.Circle((particle_positions_and_radiuses[i][1][part], particle_positions_and_radiuses[i][0][part]), particle_positions_and_radiuses[i][2][part], color='m', fill=False)
+                plt.gcf().gca().add_artist(circle)
+        
+        
+        for link in links:
+            if(link[0] == i):
+                plt.plot([predicted_positions[link[1]][2],particle_positions_and_radiuses[i][1][link[2]]],
+                                [predicted_positions[link[1]][1],particle_positions_and_radiuses[i][0][link[2]]], 'g',linestyle = '-')
+            
+
+def construct_video_from_images(pathIn = './images/',pathOut = 'output.mp4',fps = 25):
+    import cv2
+    import matplotlib.pyplot as plt
+    import os
+    from os.path import isfile, join
+
+    size = 0
+    frame_array = []
+    files = [f for f in os.listdir(pathIn) if isfile(join(pathIn, f))]
+
+    #for sorting the file names properly
+    files.sort(key = lambda x: int(x[5:-4]))
+
+    for i in range(len(files)):
+        filename=pathIn + files[i]
+        #reading each files
+        img = cv2.imread(filename)
+        height, width, layers = img.shape
+        size = (width,height)
+        #inserting the frames into an image array
+        frame_array.append(img)
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(pathOut,cv2.VideoWriter_fourcc(*'mp4v'), fps, size)
+
+    for i in range(len(frame_array)):
+        # writing to a image array
+        out.write(frame_array[i])
+
+    out.release()
+    cv2.destroyAllWindows()
