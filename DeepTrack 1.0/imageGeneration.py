@@ -70,7 +70,7 @@ def get_image_parameters_preconfig(image_size=256):
 
     particle_number = randint(10, 30)
     particle_radius_list = uniform(0.5, 2, particle_number)
-    (particle_center_x_list, particle_center_y_list) = get_particle_positions(particle_radius_list, image_size)
+    (particle_center_x_list, particle_center_y_list) = generate_particle_positions(particle_radius_list, image_size)
 
     particle_bessel_orders_list = []
     particle_intensities_list = []
@@ -106,7 +106,7 @@ def get_aug_parameters():
                 fill_mode='nearest')
 
 
-def get_particle_positions(particle_radius_list=[], image_size=128):
+def generate_particle_positions(particle_radius_list=[], image_size=128):
     """Generates multiple particle x- and y-coordinates with respect to each other.
 
     Inputs:  
@@ -580,6 +580,7 @@ def get_particle_positions_radii_and_intensities(label_or_prediction):
     from statistics import mean
     from numpy import argwhere
     (label_id, number_of_particles) = measure.label(label_or_prediction[:, :, 0], return_num=True)
+
     # Bra namn
     x_mean_list = []
     y_mean_list = []
@@ -647,7 +648,7 @@ def visualise_batch(batch, index_of_image_to_show=0, use_predictions=True, zoom_
                     cutoff_value=0.5, apply_sigmoid=False, show_colorbar=True):
     """Method to visualise image and label/prediction from batch. The data from the label/prediction is visualised by
         drawing out circles around particles. The position and size of the circles is calculated using
-        get_particle_centers.
+        get_particle_positions_radii_and_intensities.
         Inputs:
 
         Outputs:
