@@ -170,12 +170,11 @@ def centroids_DT(
 def get_predicted_positions_DT(particle_radial_distance_threshold,
                                particle_maximum_interdistance,
                                number_frames_to_be_tracked,
-                               predicted_positions_wrt_frame):
+                               predicted_positions_wrt_frame,
+                               verbose = True):
     import numpy as np
     import matplotlib.pyplot as plt
 
-    particle_positions = []
-    particle_centroids = []
     particle_radial_distance = []
     predicted_positions = []
 
@@ -198,21 +197,18 @@ def get_predicted_positions_DT(particle_radial_distance_threshold,
                         np.append(particle_radial_distance,
                                   predicted_positions_wrt_frame[i, j, k, 2])
 
+
         if (len(particle_positions_x) == 0):
-            raise KeyError('particle_radial_distance_threshold too small, no predictions passed')
+            if(verbose):print('particle_radial_distance_threshold too small, no predictions passed')
+        else:    
+            # Calculate the centroid positions
+            (centroids_x, centroids_y) = centroids_DT(particle_positions_x,
+                                                    particle_positions_y,
+                                                    particle_radial_distance,
+                                                    particle_maximum_interdistance)
 
-        particle_positions.append([])
-        particle_positions[i].append(particle_positions_x)
-        particle_positions[i].append(particle_positions_y)
-
-        # Calculate the centroid positions
-        (centroids_x, centroids_y) = centroids_DT(particle_positions_x,
-                                                  particle_positions_y,
-                                                  particle_radial_distance,
-                                                  particle_maximum_interdistance)
-
-        for k in range(len(centroids_x)):
-            predicted_positions.append((i, centroids_x[k], centroids_y[k]))
+            for k in range(len(centroids_x)):
+                predicted_positions.append((i, centroids_x[k], centroids_y[k]))
 
     return predicted_positions
 
@@ -293,8 +289,12 @@ def hits_and_misses(number_frames_to_be_tracked, predicted_positions, particle_p
                         
                     
     if(long_return):
-        MAE_distance = MAE_distance/len(true_positives)
-        MSE_distance = MSE_distance/len(true_positives)
+        if(len(true_positives) != 0):
+            MAE_distance = MAE_distance/len(true_positives)
+            MSE_distance = MSE_distance/len(true_positives)
+        else:
+            MAE_distance = 9999999
+            MSE_distance = 9999999
         return nr_real_particles,nr_predictions,nr_true_positives,nr_false_positives,true_positives, false_positives, true_positive_links,MAE_distance,MSE_distance
     else:
         return nr_real_particles,nr_predictions,nr_true_positives,nr_false_positives
@@ -346,7 +346,7 @@ def visualize_hits_and_misses(number_frames_to_be_tracked, frames,  particle_pos
                                 [predicted_positions[link[1]][1],particle_positions_and_radiuses[i][0][link[2]]], 'g',linestyle = '-')
             
 
-def construct_video_from_images(pathIn = './images/',pathOut = 'output.mp4',fps = 25):
+def construct_video_from_images(number_of_images_to_save = 10,pathIn = './images/',pathOut = 'output.mp4',fps = 25):
     import cv2
     import matplotlib.pyplot as plt
     import os
