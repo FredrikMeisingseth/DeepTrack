@@ -346,7 +346,7 @@ def hits_and_misses(number_frames_to_be_tracked, predicted_positions, particle_p
         for j in range(int(nr_predictions[i])):
             hasHit = False
             best_match = (None,None,None)
-            shortest_distance = 99999999
+            shortest_distance = 9999999
             
             for part in range(int(nr_real_particles[i])):
                 distance_x = (predictions_for_frame_i[j][1] - particle_positions_and_radiuses[i][0][part])**2
@@ -380,8 +380,8 @@ def hits_and_misses(number_frames_to_be_tracked, predicted_positions, particle_p
             MAE_distance = MAE_distance/len(true_positives)
             MSE_distance = MSE_distance/len(true_positives)
         else:
-            MAE_distance = 9999999
-            MSE_distance = 9999999
+            MAE_distance = -1
+            MSE_distance = -1
         return nr_real_particles,nr_predictions,nr_true_positives,nr_false_positives,true_positives, false_positives, true_positive_links,MAE_distance,MSE_distance
     else:
         return nr_real_particles,nr_predictions,nr_true_positives,nr_false_positives
