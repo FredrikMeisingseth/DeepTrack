@@ -192,6 +192,104 @@ def get_operating_characteristics_scanning_box_optimized(predicted_particle_posi
     return P, N, TP, FP, TN, FN
 
 
+def get_operating_characteristics(predicted_positions,
+                 particle_positions_and_radiuses,
+                 image_size_x, image_size_y,
+                 scanning_box_size_x, scanning_box_size_y,
+                 scanning_box_step_x, scanning_box_step_y):
+    
+    """
+    Method for calculating operating characteristics from predictions on our normal form.
+    """
+    
+    operating_characteristics_sum = [0,0,0,0,0,0]
+    for i in range(len(particle_positions_and_radiuses)):
+        
+        current_particle_positions_x = particle_positions_and_radiuses[i][0]
+        current_particle_positions_y = particle_positions_and_radiuses[i][1]
+        
+        current_predicted_particle_positions_x = []
+        current_predicted_particle_positions_y = []
+        for pred in predicted_positions:
+            if(pred[0] == i):
+                current_predicted_particle_positions_x.append(pred[1])
+                current_predicted_particle_positions_y.append(pred[2])
+                
+    
+        current_operating_characteristics_optimized = get_operating_characteristics_scanning_box_optimized(current_predicted_particle_positions_x,
+                                                                                                 current_predicted_particle_positions_y,
+                                                                                                 current_particle_positions_x, 
+                                                                                                 current_particle_positions_y,
+                                                                                                 image_size_x, image_size_y,
+                                                                                                 scanning_box_size_x, 
+                                                                                                 scanning_box_size_y,
+                                                                                                 scanning_box_step_x,
+                                                                                                 scanning_box_step_y)
+        operating_characteristics_sum = [sum(x) for x in zip(operating_characteristics_sum, current_operating_characteristics_optimized)]
+    
+
+    operating_characteristics = [x / len(particle_positions_and_radiuses) for x in operating_characteristics_sum]
+        
+    return tuple(operating_characteristics)
+
+
+def get_optimal_parameters(predicted_positions_wrt_frame,
+                           particle_positions_and_radiuses,
+                           image_size_x, image_size_y,
+                           sample_size=100,
+                           number_of_iterations = 2,
+                           x0=[20,10],
+                           verbose = False):
+    
+    
+    import numpy as np
+    from scipy.optimize import minimize
+    from scipy.special import expit
+
+    
+    def func(x, label, pred, sample_size,image_size_x, image_size_y):
+        predicted_positions_DT = benchmark.get_predicted_positions_DT(x[0],
+                                                                      x[1],
+                                                                      sample_size,
+                                                                      pred,
+                                                                      verbose = False)
+        
+        scanning_box_size_x = image_size_x / 12
+        scanning_box_size_y = image_size_y / 12
+        scanning_box_step_x = scanning_box_size_x / 4
+        scanning_box_step_y = scanning_box_size_y / 4
+        
+        operating_characteristics = get_op_chars(predicted_positions_DT,
+                                                 label,
+                                                 image_size_x, image_size_y,
+                                                 scanning_box_size_x, scanning_box_size_y,
+                                                 scanning_box_step_x, scanning_box_step_y)
+        
+        print(operating_characteristics)
+        
+        
+        dist = benchmark.distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=100.0)
+        
+        return dist
+
+    sample_size = min([sample_size, predicted_positions_wrt_frame.shape[0]])
+
+   
+    label = particle_positions_and_radiuses
+    pred = predicted_positions_wrt_frame
+    current_guess = minimize(func, x0, args=(label, pred, sample_size,image_size_x, image_size_y), tol=1e-6, method='Nelder-Mead').x
+
+    for k in range(number_of_iterations):
+        temp = minimize(func, current_guess, args=(label, pred, sample_size, image_size_x, image_size_y), tol=1e-6, method='Nelder-Mead').x
+        current_guess = temp
+        if(verbose):
+            func_value = func(current_guess, label, pred, sample_size,image_size_x, image_size_y)
+            print("On iteration: {}, Current_guess: {} , func_value: {}".format(k,current_guess, func_value))
+        
+
+    return current_guess
+
+
 def distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=100.0):
     """
     Method that calculates the distance from the upper left corner of the ROC space for a given TPR and FPR
