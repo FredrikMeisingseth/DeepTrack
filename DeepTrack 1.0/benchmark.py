@@ -192,15 +192,11 @@ def get_operating_characteristics_scanning_box_optimized(predicted_particle_posi
     return P, N, TP, FP, TN, FN
 
 
-def get_operating_characteristics(predicted_positions,
+def get_op_chars(predicted_positions,
                  particle_positions_and_radiuses,
                  image_size_x, image_size_y,
                  scanning_box_size_x, scanning_box_size_y,
                  scanning_box_step_x, scanning_box_step_y):
-    
-    """
-    Method for calculating operating characteristics from predictions on our normal form.
-    """
     
     operating_characteristics_sum = [0,0,0,0,0,0]
     for i in range(len(particle_positions_and_radiuses)):
@@ -290,7 +286,7 @@ def get_optimal_parameters(predicted_positions_wrt_frame,
     return current_guess
 
 
-def distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=100.0):
+def distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=1):
     """
     Method that calculates the distance from the upper left corner of the ROC space for a given TPR and FPR
     Inputs:
@@ -306,6 +302,36 @@ def distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=10
 
     distance = ((1 - TPR) ** 2 + (FPR * FPR_weight) ** 2) ** 0.5
     return distance
+
+
+def distance_upper_left_corner_ROC_predictions_and_label_unet(cutoff, label, pred, sample_size,image_size_x, image_size_y,FPR_weight):
+        
+        sample_size = min([sample_size, pred.shape[0]])
+        
+        predicted_positions_unet = []
+        predicted_positions_unet = get_predicted_positions_unet(sample_size,
+                                                                      pred,
+                                                                      image_size_x,
+                                                                      image_size_y,
+                                                                      cutoff_value = cutoff)
+        
+        
+        scanning_box_size_x = image_size_x / 12
+        scanning_box_size_y = image_size_y / 12
+        scanning_box_step_x = scanning_box_size_x / 20
+        scanning_box_step_y = scanning_box_size_y / 20
+        
+        operating_characteristics = (0,0,0,0,0,0)
+        operating_characteristics = get_op_chars(predicted_positions_unet,
+                                                 label,
+                                                 image_size_x, image_size_y,
+                                                 scanning_box_size_x, scanning_box_size_y,
+                                                 scanning_box_step_x, scanning_box_step_y)
+        
+        
+        dist = distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=FPR_weight)
+              
+        return dist
 
 
 def centroids_DT(
@@ -562,3 +588,141 @@ def construct_video_from_images(number_of_images_to_save = 10,pathIn = './images
 
     out.release()
     cv2.destroyAllWindows()
+
+
+def get_optimal_parameters_DT(predicted_positions_wrt_frame,
+                           particle_positions_and_radiuses,
+                           image_size_x, image_size_y,
+                           sample_size=100,
+                           number_of_iterations = 2,
+                           x0=[20,10],
+                           verbose = False,
+                           FPR_weight = 10):
+    
+    
+    import numpy as np
+    from scipy.optimize import minimize
+    from scipy.special import expit
+
+    
+    def func(x, label, pred, sample_size,image_size_x, image_size_y,FPR_weight):
+        predicted_positions_DT = get_predicted_positions_DT(x[0],
+                                                                      x[1],
+                                                                      sample_size,
+                                                                      pred,
+                                                                      verbose = False)
+        
+        scanning_box_size_x = image_size_x / 12
+        scanning_box_size_y = image_size_y / 12
+        scanning_box_step_x = scanning_box_size_x / 4
+        scanning_box_step_y = scanning_box_size_y / 4
+        
+        operating_characteristics = get_op_chars(predicted_positions_DT,
+                                                 label,
+                                                 image_size_x, image_size_y,
+                                                 scanning_box_size_x, scanning_box_size_y,
+                                                 scanning_box_step_x, scanning_box_step_y)
+        
+        
+        
+        dist = distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=FPR_weight)
+        
+        return dist
+
+    sample_size = min([sample_size, predicted_positions_wrt_frame.shape[0]])
+
+   
+    label = particle_positions_and_radiuses
+    pred = predicted_positions_wrt_frame
+    current_guess = minimize(func, x0, args=(label, pred, sample_size,image_size_x, image_size_y,FPR_weight), tol=1e-6, method='Nelder-Mead').x
+    if(verbose):
+            func_value = func(current_guess, label, pred, sample_size,image_size_x, image_size_y,FPR_weight)
+            print("On iteration: {}, Current_guess: {} , func_value: {}".format(0,current_guess, func_value))
+            
+    for k in range(number_of_iterations):
+        temp = minimize(func, current_guess, args=(label, pred, sample_size, image_size_x, image_size_y,FPR_weight), tol=1e-6, method='Nelder-Mead').x
+        current_guess = temp
+        if(verbose):
+            func_value = func(current_guess, label, pred, sample_size,image_size_x, image_size_y,FPR_weight)
+            print("On iteration: {}, Current_guess: {} , func_value: {}".format(k+1,current_guess, func_value))
+        
+
+    return current_guess
+
+
+def get_optimal_parameters_unet(batch_predictions,
+                           particle_positions_and_radiuses,
+                           image_size_x, image_size_y,
+                           sample_size=100,
+                           number_of_iterations = 2,
+                           x0=0.8,
+                           FPR_weight = 10,
+                           verbose = False):
+    
+    
+    import numpy as np
+    from scipy.optimize import minimize
+    
+    sample_size = min([sample_size, batch_predictions.shape[0]])
+   
+    label = particle_positions_and_radiuses
+    pred = batch_predictions 
+    
+    
+    current_guess = minimize(distance_upper_left_corner_ROC_predictions_and_label_unet,
+                             x0,
+                             args=(label, pred, sample_size,image_size_x, image_size_y,FPR_weight),
+                             tol=1e-6,
+                             method = "Nelder-Mead"
+                             ).x
+    
+    
+    if(verbose):
+            func_value = distance_upper_left_corner_ROC_predictions_and_label_unet(current_guess,
+                                                                                   label,
+                                                                                   pred,
+                                                                                   sample_size,
+                                                                                   image_size_x,
+                                                                                   image_size_y,
+                                                                                   FPR_weight)
+            
+            print("On iteration: {}, Current_guess: {} , func_value: {}".format(0,current_guess, func_value))
+    
+    if(current_guess > 1): current_guess = 0.97
+    
+    bnds = [(0,1)]
+    for k in range(number_of_iterations):
+        temp = minimize(distance_upper_left_corner_ROC_predictions_and_label_unet, 
+                        current_guess,
+                        args=(label, pred, sample_size, image_size_x, image_size_y,FPR_weight),
+                        tol=1e-9,
+                        method='L-BFGS-B',
+                        bounds = bnds
+                        ).x
+        
+        current_guess = temp
+        if(verbose):
+            func_value = distance_upper_left_corner_ROC_predictions_and_label_unet(current_guess,
+                                                                                   label,
+                                                                                   pred, 
+                                                                                   sample_size,
+                                                                                   image_size_x,
+                                                                                   image_size_y,
+                                                                                   FPR_weight)
+            print("On iteration: {}, Current_guess: {} , func_value: {}".format(k+1,current_guess, func_value))
+        
+
+    return current_guess
+
+
+def get_approximate_FPR(particle_positions_and_radiuses, batch_predictions_unet,image_size_x, image_size_y, lower_weight, higher_weight, sample_size= 10):
+    from numpy import argmin,zeros
+    weights = range(lower_weight,higher_weight,1)
+    dists = zeros(len(weights))
+
+    for w in weights:
+        temp = distance_upper_left_corner_ROC_predictions_and_label_unet(0.01, particle_positions_and_radiuses, batch_predictions_unet, sample_size,image_size_x, image_size_y,w)
+        dists[w-1] = abs(1-temp)
+
+    approximate_FPR = argmin(dists)+1
+    return approximate_FPR

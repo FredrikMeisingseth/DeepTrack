@@ -613,10 +613,12 @@ def sigmoid(batch_labels_or_predictions):
     """
     import numpy as np
 
-    first_feature = batch_labels_or_predictions[:, :, :, 0]
+    result = batch_labels_or_predictions.copy()
+    first_feature = result[:, :, :, 0]
     first_feature_after_sigmoid = 1 / (1 + np.exp(-first_feature))
-    batch_labels_or_predictions[:, :, :, 0] = first_feature_after_sigmoid
-    return batch_labels_or_predictions
+    result[:, :, :, 0] = first_feature_after_sigmoid
+
+    return result
 
 
 def cutoff(batch_labels_or_predictions, cutoff_value, apply_sigmoid=False):
@@ -633,15 +635,16 @@ def cutoff(batch_labels_or_predictions, cutoff_value, apply_sigmoid=False):
     """
     import numpy as np
 
+    result = batch_labels_or_predictions.copy()
     if apply_sigmoid:
-        batch_labels_or_predictions = sigmoid(batch_labels_or_predictions)
+        result = sigmoid(result)
 
-    first_feature = batch_labels_or_predictions[:, :, :, 0]
+    first_feature = result[:, :, :, 0]
     first_feature[first_feature >= cutoff_value] = 1
     first_feature[first_feature < cutoff_value] = 0
 
-    batch_labels_or_predictions[:, :, :, 0] = first_feature
-    return batch_labels_or_predictions
+    result[:, :, :, 0] = first_feature
+    return result
 
 
 def visualise_batch(batch, index_of_image_to_show=0, use_predictions=True, zoom_value=5.0, apply_cutoff=False,
