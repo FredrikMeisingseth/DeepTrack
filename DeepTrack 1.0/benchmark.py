@@ -456,8 +456,7 @@ def get_predicted_positions_unet(number_frames_to_be_tracked, batch_predictions,
 
     for i in range(number_frames_to_be_tracked):
 
-        (x_mean_list, y_mean_list, r_mean_list, i_mean_list) = IG.get_particle_positions_radii_and_intensities(
-            predictions[i])
+        (x_mean_list, y_mean_list, r_mean_list, i_mean_list) = IG.get_particle_attributes(predictions[i])
 
         for j in range(len(x_mean_list)):
             x_position = x_mean_list[j]
@@ -775,7 +774,7 @@ def get_optimal_parameters_unet(batch_predictions,
                                 sample_size=100,
                                 number_of_iterations=2,
                                 x0=0.8,
-                                FPR_weight=10,
+                                FPR_weight=1,
                                 verbose=False):
     import numpy as np
     from scipy.optimize import minimize
