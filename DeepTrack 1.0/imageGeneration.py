@@ -96,17 +96,7 @@ def get_image_parameters_preconfig(image_size=256):
     return image_parameters
 
 
-def get_aug_parameters():
-    return dict(rotation_range=0.2,
-                width_shift_range=0.05,
-                height_shift_range=0.05,
-                shear_range=0.05,
-                zoom_range=0.05,
-                horizontal_flip=True,
-                fill_mode='nearest')
-
-
-def generate_particle_positions(particle_radius_list=[], image_size=128):
+def generate_particle_positions(particle_radius_list=[], image_size=128, allow_overlap = True):
     """Generates multiple particle x- and y-coordinates with respect to each other.
 
     Inputs:  
@@ -124,10 +114,15 @@ def generate_particle_positions(particle_radius_list=[], image_size=128):
     from numpy import reshape
 
     particle_centers = []
+    radius_max = max(particle_radius_list)
     for radius in particle_radius_list:
         for i in range(100):
             (x, y) = (uniform(radius, image_size - radius), uniform(radius, image_size - radius))
-            if all(((x - coord[0]) ** 2 + (y - coord[1]) ** 2) ** 0.5 > radius for coord in particle_centers):
+            if allow_overlap:
+                min_distance = 2*radius
+            else:
+                min_distance = 3*radius_max
+            if all(((x - coord[0]) ** 2 + (y - coord[1]) ** 2) ** 0.5 > min_distance for coord in particle_centers):
                 particle_centers.append([x, y])
                 break
             elif i == 99:
@@ -141,7 +136,7 @@ def generate_particle_positions(particle_radius_list=[], image_size=128):
     return particle_centers_x, particle_centers_y
 
 
-def get_image(image_parameters):
+def get_image(image_parameters, suppress_warnings=False):
     """Generate image with particles.
     Input:
     image_parameters: list with the values of the image parameters in a dictionary:
@@ -187,7 +182,7 @@ def get_image(image_parameters):
     # initialize the image at the background level
     image_background = ones((image_size, image_size)) * image_background_level
 
-    # calculate matrix coordinates from the center of the image
+    # calculate matrix coordinates
     image_coordinate_x, image_coordinate_y = meshgrid(arange(0, image_size),
                                                       arange(0, image_size),
                                                       sparse=False,
@@ -212,7 +207,7 @@ def get_image(image_parameters):
         start_y = int(max(ceil(particle_center_y - particle_radius * 3), 0))
         stop_y = int(min(ceil(particle_center_y + particle_radius * 3), image_size))
 
-        # calculate matrix coordinates from the center of the image
+        # calculate matrix coordinates
         image_coordinate_x, image_coordinate_y = meshgrid(arange(start_x, stop_x),
                                                           arange(start_y, stop_y),
                                                           sparse=False,
@@ -255,7 +250,7 @@ def get_image(image_parameters):
         # ignore everything except the message
         return str(msg) + '\n'
 
-    if percentage_of_pixels_that_were_cut_off > 0:
+    if percentage_of_pixels_that_were_cut_off > 0 and not suppress_warnings:
         warnings.formatwarning = custom_formatwarning
         warn_message = ("Warning: %.5f%% of the pixels in the generated image are brighter than the 1 (%d pixels)! "
                         "These were cut-off to the max value 1. Consider adjusting your gradient intensity, particle "
@@ -318,7 +313,7 @@ def get_label(image_parameters=get_image_parameters_preconfig()):
 
 
 def get_batch(get_image_parameters_function=lambda: get_image_parameters_preconfig(),
-              batch_size=32, verbose=True, include_particle_positions_radii_and_intensities=False):
+              batch_size=32, verbose=True, suppress_warnings=False):
     """A batch is a tuple with three elements:
     batch_images: numpy array of dimensions (batch_size, pixels_x, pixels_y, color_channels),
         where color_channels = 1
@@ -332,8 +327,7 @@ def get_batch(get_image_parameters_function=lambda: get_image_parameters_preconf
     batch_size
 
     Outputs:
-    batch: tuple of (batch_images, batch_labels, batch_predictions, batch_image_parameters),
-        where batch_image_parameters is None here
+    batch: tuple of (batch_images, batch_labels, batch_predictions, batch_particle_attributes)
     """
 
     from numpy import zeros
@@ -351,44 +345,41 @@ def get_batch(get_image_parameters_function=lambda: get_image_parameters_preconf
 
     t = time.time()
 
-    if include_particle_positions_radii_and_intensities:
-        batch_particle_positions_and_radii_and_intensities = []
+    batch_particle_attributes = []
 
     for i in range(batch_size):
         image_parameters = get_image_parameters_function()
-        batch_images[i, :, :, 0] = get_image(image_parameters)
+        batch_images[i, :, :, 0] = get_image(image_parameters, suppress_warnings=suppress_warnings)
         batch_labels[i, :, :, 0:5] = get_label(image_parameters)
 
-        if include_particle_positions_radii_and_intensities:
-            batch_particle_positions_and_radii_and_intensities.append((image_parameters['Particle Center X List'],
-                                                                       image_parameters['Particle Center Y List'],
-                                                                       image_parameters['Particle Radius List'],
-                                                                       image_parameters['Particle Intensities List']))
+        batch_particle_attributes.append((image_parameters['Particle Center X List'],
+                                          image_parameters['Particle Center Y List'],
+                                          image_parameters['Particle Radius List'],
+                                          image_parameters['Particle Intensities List']))
 
     time_taken = time.time() - t
     if verbose:
         print("Time taken for batch generation of size " + str(batch_size) + ": " + str(time_taken) + " s.")
 
-    if include_particle_positions_radii_and_intensities:
-        return batch_images, batch_labels, batch_predictions, batch_particle_positions_and_radii_and_intensities
-    else:
-        return batch_images, batch_labels, batch_predictions
+    return batch_images, batch_labels, batch_predictions, batch_particle_attributes
 
 
-def save_batch(batch, image_path='data', label_path='data', prediction_path='data', save_images=True,
-               save_labels=True, save_predictions=True):
+def save_batch(batch, image_path='data', label_path='data', prediction_path='data', particle_attributes_path='data',
+               save_images=True, save_labels=True, save_predictions=True, save_particle_attributes=True):
     """Method to save batches. For each element of the batch, if save_(element) is true, the method checks if the
     element is None. If it isn't, it's saved in the folder (element)_path. If it is, a warning is printed.
     """
     import cv2
     import numpy as np
     import os
+    import pickle
 
     IMAGE_FILENAME = 'image'
     LABEL_FILENAME = 'label'
     PREDICTION_FILENAME = 'prediction'
+    PARTICLE_ATTRIBUTES_FILENAME = 'particle_attributes'
 
-    (batch_images, batch_labels, batch_predictions) = batch
+    (batch_images, batch_labels, batch_predictions, batch_particle_attributes) = batch
 
     # save images
     if save_images:
@@ -396,6 +387,7 @@ def save_batch(batch, image_path='data', label_path='data', prediction_path='dat
             batch_size = batch_images.shape[0]
             if not (os.path.isdir(image_path)):
                 os.makedirs(image_path, exist_ok=True)
+                print("Created path " + image_path)
             for i in range(batch_size):
                 image = (batch_images[i] * 255).astype(np.uint8)
                 cv2.imwrite("%s/%s%d.png" % (image_path, IMAGE_FILENAME, i), image)
@@ -426,26 +418,42 @@ def save_batch(batch, image_path='data', label_path='data', prediction_path='dat
         else:
             print("Cannot save predictions, batch_predictions is None!")
 
+    # save attributes
+    if save_particle_attributes:
+        if batch_particle_attributes is not None:
+            batch_size = len(batch_particle_attributes)
+            if not os.path.isdir(particle_attributes_path):
+                os.makedirs(particle_attributes_path, exist_ok=True)
+                print("Created path " + particle_attributes_path)
+            for i in range(batch_size):
+                with open("%s/%s%d.p" % (particle_attributes_path, PARTICLE_ATTRIBUTES_FILENAME, i), 'wb') as f:
+                    pickle.dump(batch_particle_attributes[i], f)
+        else:
+            print("Cannot save particle_attributes, batch_particle_attributes is None!")
+
     return
 
 
-def load_batch(batch_size, image_path='data', label_path='data', prediction_path='data', load_images=True,
-               load_labels=True, load_predictions=True):
+def load_batch(batch_size, image_path='data', label_path='data', prediction_path='data',
+               particle_attributes_path = 'data', load_images=True, load_labels=True, load_predictions=True,
+               load_particle_attributes = True, verbose = True):
     """Method to load bathes saved using save_batch. A batch of length batch_size is loaded. For each element  of the
     batch, if load_(element) is True, the method checks if (element)_path exists. If it does, the element is loaded. If
     not, a warning message is printed.
     """
     from skimage.io import imread
     import numpy as np
-    import os
+    import pickle
 
     IMAGE_FILENAME = 'image'
     LABEL_FILENAME = 'label'
     PREDICTION_FILENAME = 'prediction'
+    PARTICLE_ATTRIBUTES_FILENAME = 'particle_attributes'
 
     batch_images = None
     batch_labels = None
     batch_predictions = None
+    batch_particle_attributes = None
 
     # load images, print warning if load_images is true but image file file could not be found
     if load_images:
@@ -457,7 +465,8 @@ def load_batch(batch_size, image_path='data', label_path='data', prediction_path
                 filename = ("%s/%s%d.png" % (image_path, IMAGE_FILENAME, j))
                 batch_images[j, :, :, 0] = imread(filename) / 255
         except FileNotFoundError:
-            print("Image %s not found!" % filename)
+            if verbose:
+                print("Image %s not found!" % filename)
 
     # load labels, print warning if load_labels is true but label file could not be found
     if load_labels:
@@ -469,7 +478,8 @@ def load_batch(batch_size, image_path='data', label_path='data', prediction_path
                 filename = ("%s/%s%d.npy" % (label_path, LABEL_FILENAME, j))
                 batch_labels[j] = np.load(filename)
         except FileNotFoundError:
-            print("Label %s not found!" % filename)
+            if verbose:
+                print("Label %s not found!" % filename)
 
     # load predictions, print warning if load_predictions is true but prediction file could not be found
     if load_predictions:
@@ -481,59 +491,31 @@ def load_batch(batch_size, image_path='data', label_path='data', prediction_path
                 filename = ("%s/%s%d.npy" % (prediction_path, PREDICTION_FILENAME, j))
                 batch_predictions[j] = np.load(filename)
         except FileNotFoundError:
-            print("Could not find predictions directory!")
+            if verbose:
+                print("Prediction %s not found!" % filename)
 
-    return batch_images, batch_labels, batch_predictions
+    if load_particle_attributes:
+        filename = ("%s/%s%d.p" % (particle_attributes_path, PARTICLE_ATTRIBUTES_FILENAME, 0))
+        try:
+            with open(filename, 'rb') as f:
+                pickle.load(f)
+            batch_particle_attributes = []
+            for i in range(batch_size):
+                filename = ("%s/%s%d.p" % (particle_attributes_path, PARTICLE_ATTRIBUTES_FILENAME, i))
+                with open(filename, 'rb') as f:
+                    batch_particle_attributes.append(pickle.load(f))
+        except FileNotFoundError:
+            if verbose:
+                print("Particle attribute %s not found!" % filename)
 
-
-def generator_for_training(get_batch=lambda: get_batch(), aug_parameters=get_aug_parameters()):
-    from keras.preprocessing.image import ImageDataGenerator
-    import numpy as np
-    (image_batch, label_batch, prediction_batch) = get_batch()
-    image_shape = image_batch.shape
-    image_batch = np.reshape(image_batch, (image_shape[0], image_shape[1], image_shape[2], 1))
-    label_batch = np.reshape(label_batch,
-                             (image_shape[0], image_shape[1], image_shape[2], 1))  # Expects a color channel
-    print(image_batch.shape)
-
-    data_generator = ImageDataGenerator(**aug_parameters)
-    return data_generator.flow(image_batch, label_batch, batch_size=32)
-    # Som jag fattar det, batch size här är hur många augmenterade bilder den genererar från grunddatan
-
-
-def generator_for_training_load(image_path, label_path, aug_parameters=get_aug_parameters()):
-    from keras.preprocessing.image import ImageDataGenerator
-    image_datagenerator = ImageDataGenerator(**aug_parameters)
-    label_datagenerator = ImageDataGenerator(**aug_parameters)
-
-    # Provide the same seed and keyword arguments to the fit and flow methods
-    seed = 1
-    image_generator = image_datagenerator.flow_from_directory(
-        image_path,
-        class_mode=None,
-        seed=seed)
-
-    label_generator = label_datagenerator.flow_from_directory(
-        label_path,
-        class_mode=None,
-        seed=seed)
-
-    # combine generators into one which yields image and masks
-    return zip(image_generator, label_generator)
-
-
-def get_batch_load(filename):
-    from skimage import io
-    from numpy import reshape
-    image_batch = io.imread(filename)
-    image_batch = reshape(image_batch, (image_batch.shape[0], image_batch.shape[1], image_batch.shape[2], 1))
-    return image_batch
+    return batch_images, batch_labels, batch_predictions, batch_particle_attributes
 
 
 def create_data_generator(get_image_parameters=lambda: get_image_parameters_preconfig(),
                           epoch_batch_size=1000,
                           batch_size=32,
-                          len=100):
+                          len=100,
+                          suppress_warnings=False):
     from keras.utils import Sequence
 
     class DataGenerator(Sequence):
@@ -555,7 +537,8 @@ def create_data_generator(get_image_parameters=lambda: get_image_parameters_prec
             self.batch_size = batch_size
 
         def on_epoch_end(self):
-            self.batch = get_batch(self.get_image_parameters, self.epoch_batch_size)
+            self.batch = get_batch(self.get_image_parameters, self.epoch_batch_size, suppress_warnings=
+            suppress_warnings)
             batch_images, batch_labels, batch_predictions = self.batch
             from matplotlib import pyplot as plt
             plt.imshow(batch_images[0, :, :, 0], cmap='gray', vmin=0, vmax=1)
@@ -569,13 +552,13 @@ def create_data_generator(get_image_parameters=lambda: get_image_parameters_prec
         def __getitem__(self, index):
             from random import randint
             image_indices = [randint(0, self.epoch_batch_size - 1) for i in range(self.batch_size)]
-            batch_images, batch_labels, batch_predictions = self.batch
+            batch_images, batch_labels, batch_predictions, batch_particle_attributes = self.batch
             return batch_images[image_indices], batch_labels[image_indices]
 
     return DataGenerator(get_image_parameters, epoch_batch_size, batch_size, len)
 
 
-def get_particle_positions_radii_and_intensities(label_or_prediction):
+def get_particle_attributes(label_or_prediction):
     from skimage import measure
     from statistics import mean
     from numpy import argwhere
@@ -614,6 +597,8 @@ def sigmoid(batch_labels_or_predictions):
     import numpy as np
 
     first_feature = batch_labels_or_predictions[:, :, :, 0]
+    first_feature = np.clip(first_feature, -70, 70)
+
     first_feature_after_sigmoid = 1 / (1 + np.exp(-first_feature))
     batch_labels_or_predictions[:, :, :, 0] = first_feature_after_sigmoid
     return batch_labels_or_predictions
@@ -644,11 +629,11 @@ def cutoff(batch_labels_or_predictions, cutoff_value, apply_sigmoid=False):
     return batch_labels_or_predictions
 
 
-def visualise_batch(batch, index_of_image_to_show=0, use_predictions=True, zoom_value=5.0, apply_cutoff=False,
-                    cutoff_value=0.5, apply_sigmoid=False, show_colorbar=True):
+def visualise_batch(batch, index_of_image_to_show=0, use_predictions=True, zoom_value=1.0, apply_cutoff=False,
+                    cutoff_value=0.5, apply_sigmoid=False, show_colorbar=True, use_batch_particle_attributes=False):
     """Method to visualise image and label/prediction from batch. The data from the label/prediction is visualised by
         drawing out circles around particles. The position and size of the circles is calculated using
-        get_particle_positions_radii_and_intensities.
+        get_particle_attributes.
         Inputs:
 
         Outputs:
@@ -657,25 +642,28 @@ def visualise_batch(batch, index_of_image_to_show=0, use_predictions=True, zoom_
     from scipy.ndimage import zoom
     from matplotlib import pyplot as plt
 
-    (batch_images, batch_labels, batch_predictions) = batch
-    # Prepare the image data (label or prediction)
-    if use_predictions:
-        batch_data = batch_predictions.copy()
+    (batch_images, batch_labels, batch_predictions, batch_particle_attributes) = batch
+    if use_batch_particle_attributes:
+        (x_mean_list, y_mean_list, r_mean_list, i_mean_list) = batch_particle_attributes[index_of_image_to_show]
     else:
-        batch_data = batch_labels.copy()
+        # Prepare the image data (label or prediction)
+        if use_predictions:
+            batch_data = batch_predictions.copy()
+        else:
+            batch_data = batch_labels.copy()
 
-    if apply_sigmoid:
-        batch_data = sigmoid(batch_data)
+        if apply_sigmoid:
+            batch_data = sigmoid(batch_data)
 
-    if apply_cutoff:
-        batch_data = cutoff(batch_data, cutoff_value, apply_sigmoid=False)
+        if apply_cutoff:
+            batch_data = cutoff(batch_data, cutoff_value, apply_sigmoid=False)
 
-    image_data = batch_data[index_of_image_to_show]
+        image_data = batch_data[index_of_image_to_show]
+
+        (x_mean_list, y_mean_list, r_mean_list, i_mean_list) = get_particle_attributes(image_data)
+
     image = batch_images[index_of_image_to_show, :, :, 0]
     image = zoom(image, zoom_value)
-
-    # Shows the figure
-    (x_mean_list, y_mean_list, r_mean_list, i_mean_list) = get_particle_positions_radii_and_intensities(image_data)
 
     fig = plt.gcf()
     ax = fig.gca()
