@@ -114,8 +114,8 @@ def generate_particle_positions(particle_radius_list=[], image_size=128, allow_o
     from numpy import reshape
 
     particle_centers = []
-    radius_max = max(particle_radius_list)
     for radius in particle_radius_list:
+        radius_max = max(particle_radius_list)
         for i in range(100):
             (x, y) = (uniform(radius, image_size - radius), uniform(radius, image_size - radius))
             if allow_overlap:
