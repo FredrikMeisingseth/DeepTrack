@@ -96,7 +96,7 @@ def get_image_parameters_preconfig(image_size=256):
     return image_parameters
 
 
-def generate_particle_positions(particle_radius_list=[], image_size=128, allow_overlap = True):
+def generate_particle_positions(particle_radius_list=[], image_size=128, allow_overlap=True):
     """Generates multiple particle x- and y-coordinates with respect to each other.
 
     Inputs:  
@@ -119,9 +119,9 @@ def generate_particle_positions(particle_radius_list=[], image_size=128, allow_o
         for i in range(100):
             (x, y) = (uniform(radius, image_size - radius), uniform(radius, image_size - radius))
             if allow_overlap:
-                min_distance = 2*radius
+                min_distance = 2 * radius
             else:
-                min_distance = 3*radius_max
+                min_distance = 3 * radius_max
             if all(((x - coord[0]) ** 2 + (y - coord[1]) ** 2) ** 0.5 > min_distance for coord in particle_centers):
                 particle_centers.append([x, y])
                 break
@@ -202,10 +202,10 @@ def get_image(image_parameters, suppress_warnings=False):
             particle_center_x_list, particle_center_y_list, particle_radius_list, particle_bessel_orders_list,
             particle_intensities_list, ellipsoidal_orientation_list):
         # calculate coordinates of cutoff window
-        start_x = int(max(ceil(particle_center_x - particle_radius * 3), 0))
-        stop_x = int(min(ceil(particle_center_x + particle_radius * 3), image_size))
-        start_y = int(max(ceil(particle_center_y - particle_radius * 3), 0))
-        stop_y = int(min(ceil(particle_center_y + particle_radius * 3), image_size))
+        start_x = int(max(ceil(particle_center_x - particle_radius * 6), 0))
+        stop_x = int(min(ceil(particle_center_x + particle_radius * 6), image_size))
+        start_y = int(max(ceil(particle_center_y - particle_radius * 6), 0))
+        stop_y = int(min(ceil(particle_center_y + particle_radius * 6), image_size))
 
         # calculate matrix coordinates
         image_coordinate_x, image_coordinate_y = meshgrid(arange(start_x, stop_x),
@@ -435,8 +435,8 @@ def save_batch(batch, image_path='data', label_path='data', prediction_path='dat
 
 
 def load_batch(batch_size, image_path='data', label_path='data', prediction_path='data',
-               particle_attributes_path = 'data', load_images=True, load_labels=True, load_predictions=True,
-               load_particle_attributes = True, verbose = True):
+               particle_attributes_path='data', load_images=True, load_labels=True, load_predictions=True,
+               load_particle_attributes=True, verbose=True):
     """Method to load bathes saved using save_batch. A batch of length batch_size is loaded. For each element  of the
     batch, if load_(element) is True, the method checks if (element)_path exists. If it does, the element is loaded. If
     not, a warning message is printed.
@@ -512,9 +512,9 @@ def load_batch(batch_size, image_path='data', label_path='data', prediction_path
 
 
 def create_data_generator(get_image_parameters=lambda: get_image_parameters_preconfig(),
-                          epoch_batch_size=1000,
-                          batch_size=32,
-                          len=100,
+                          batch_size = 64,
+                          iterations = 1000,
+                          verbose=True,
                           suppress_warnings=False):
     from keras.utils import Sequence
 
@@ -526,36 +526,29 @@ def create_data_generator(get_image_parameters=lambda: get_image_parameters_prec
 
         def __init__(self,
                      get_image_parameters=lambda: get_image_parameters_preconfig(),
-                     epoch_batch_size=epoch_batch_size,
-                     batch_size=batch_size,
-                     len=len):
+                     batch_size=batch_size):
             'Initialization'
             self.get_image_parameters = get_image_parameters
-            self.epoch_batch_size = epoch_batch_size
-            self.on_epoch_end()
-            self.len = len
             self.batch_size = batch_size
-
-        def on_epoch_end(self):
-            self.batch = get_batch(self.get_image_parameters, self.epoch_batch_size, suppress_warnings=
-            suppress_warnings)
-            batch_images, batch_labels, batch_predictions = self.batch
-            from matplotlib import pyplot as plt
-            plt.imshow(batch_images[0, :, :, 0], cmap='gray', vmin=0, vmax=1)
-            plt.show()
-            plt.imshow(batch_labels[0, :, :, 0], cmap='gray', vmin=0, vmax=1)
-            plt.show()
+            self.len = iterations
 
         def __len__(self):
             return self.len
 
         def __getitem__(self, index):
-            from random import randint
-            image_indices = [randint(0, self.epoch_batch_size - 1) for i in range(self.batch_size)]
+            self.batch = get_batch(self.get_image_parameters, self.batch_size,
+                                   suppress_warnings=suppress_warnings, verbose = verbose)
             batch_images, batch_labels, batch_predictions, batch_particle_attributes = self.batch
-            return batch_images[image_indices], batch_labels[image_indices]
+            if verbose:
+                from matplotlib import pyplot as plt
+                plt.imshow(batch_images[0, :, :, 0], cmap='gray', vmin=0, vmax=1)
+                plt.show()
+                plt.imshow(batch_labels[0, :, :, 0], cmap='gray', vmin=0, vmax=1)
+                plt.show()
 
-    return DataGenerator(get_image_parameters, epoch_batch_size, batch_size, len)
+            return batch_images, batch_labels
+
+    return DataGenerator(get_image_parameters, batch_size)
 
 
 def get_particle_attributes(label_or_prediction):
