@@ -78,7 +78,7 @@ def create_unet(pretrained_weights=None, input_size=(None, None, 1)):
                                                                i_loss,
                                                                particle_binary_accuracy])
 
-    if (pretrained_weights):
+    if pretrained_weights:
         model.load_weights(pretrained_weights)
 
     return model
@@ -147,7 +147,7 @@ def create_multiframe_unet(pretrained_weights=None, input_size=(None, None, None
     output = TimeDistributed(Conv2D(5, 1, activation=None, padding='same'))(conv9)
 
     model = Model(inputs=[input], outputs=[output])
-    model.compile(optimizer=Adam(lr=1e-4), loss=loss, metrics=[particle_loss,
+    model.compile(optimizer=Adam(lr=1e-3), loss=loss, metrics=[particle_loss,
                                                                x_loss,
                                                                y_loss,
                                                                r_loss,
@@ -170,23 +170,29 @@ def get_padded_images(batch_images):
     batch_height = batch_images[0, :, :, 0].shape[0]
     batch_width = batch_images[0, :, :, 0].shape[1]
     number_of_images = batch_images.shape[0]
+    padding_tuple = ((0, 0), (0, 0), (0, 0), (0, 0))
 
     if batch_height % 16 != 0 or batch_width % 16 != 0:
         n1 = 16 - batch_height % 16
         n2 = 16 - batch_width % 16
 
-        padding_tuple = ((0, 0), (0, n1), (0, n2), (0,0))
+        padding_tuple = ((0, 0), (0, n1), (0, n2), (0, 0))
         padded_images = pad(batch_images, padding_tuple, mode='symmetric')
 
     else:
         padded_images = batch_images
-    return padded_images
+    return padding_tuple, padded_images
 
 
 def predict(model, batch_images):
-    padded_images = get_padded_images(batch_images)
+    from numpy import pad
 
-    return model.predict(padded_images)
+    padding_tuple, padded_images = get_padded_images(batch_images)
+    padded_images = model.predict(padded_images)
+    n1 = padding_tuple[1][1]
+    n2 = padding_tuple[2][1]
+
+    return padded_images[:, :padded_images.shape[1] - n1, :padded_images.shape[2] - n2, :]
 
 
 def weighted_crossentropy(y_true, y_pred, beta=30):
