@@ -1,9 +1,9 @@
-def get_operating_characteristics(labels, predictions):
+def get_operating_characteristics(batch_labels, batch_predictions):
     """
     Method that returns the operating characteristics of a prediction.
     Input:
-        labels: the batch_labels
-        predictions: the batch_predictions. Sigmoid and cutoff should be applied BEFORE applying this method.
+        batch_labels: the batch_labels
+        batch_predictions: the batch_predictions. Sigmoid and cutoff should be applied BEFORE applying this method.
     Outputs:
         P:  condition positive - number of real positives in the label (pixels that are 1 in label)
         N:  condition negative - number of real negatives in the label (pixels that are 0 in label)
@@ -14,8 +14,8 @@ def get_operating_characteristics(labels, predictions):
     """
     import numpy as np
 
-    label_first_feature = np.ndarray.flatten(labels[:, :, :, 0])
-    prediction_first_feature = np.ndarray.flatten(predictions[:, :, :, 0])
+    label_first_feature = np.ndarray.flatten(batch_labels[:, :, :, 0])
+    prediction_first_feature = np.ndarray.flatten(batch_predictions[:, :, :, 0])
 
     P = sum(label_first_feature)
     N = sum(1 - label_first_feature)
@@ -27,6 +27,79 @@ def get_operating_characteristics(labels, predictions):
     FN = sum(label_first_feature * (1 - prediction_first_feature))
 
     return P, N, TP, FP, TN, FN
+
+
+def get_MAE_xy_unet(batch_labels, batch_predictions):
+    import numpy as np
+    import scipy
+    label_first_feature = np.ndarray.flatten(batch_labels[:, :, :, 0])
+
+    label_x = np.ndarray.flatten(batch_labels[:, :, :, 1])
+    predictions_x = np.ndarray.flatten(batch_predictions[:, :, :, 1]) * label_first_feature
+
+    label_x_sparse = scipy.sparse.csc_matrix(label_x)
+    prediction_x_sparse = scipy.sparse.csc_matrix(predictions_x)
+
+    label_y = np.ndarray.flatten(batch_labels[:, :, :, 2])
+    predictions_y = np.ndarray.flatten(batch_predictions[:, :, :, 2]) * label_first_feature
+
+    label_y_sparse = scipy.sparse.csc_matrix(label_y)
+    prediction_y_sparse = scipy.sparse.csc_matrix(predictions_y)
+
+    diff_x_sparse = label_x_sparse - prediction_x_sparse
+    diff_y_sparse = label_y_sparse - prediction_y_sparse
+
+    AE_xy_matrix = scipy.sparse.csc_matrix.sqrt(
+        scipy.sparse.csc_matrix.power(diff_x_sparse, 2) + scipy.sparse.csc_matrix.power(diff_y_sparse, 2))
+
+    MAE_xy = scipy.sparse.csc_matrix.sum(AE_xy_matrix) / scipy.sparse.csc_matrix.sum(
+        scipy.sparse.csc_matrix(label_first_feature))
+
+    return MAE_xy
+
+
+def get_MAE_r_unet(batch_labels, batch_predictions):
+    import numpy as np
+    import scipy
+
+    label_first_feature = np.ndarray.flatten(batch_labels[:, :, :, 0])
+
+    label_r = np.ndarray.flatten(batch_labels[:, :, :, 3])
+    prediction_r = np.ndarray.flatten(batch_predictions[:, :, :, 3]) * label_first_feature
+
+    label_r_sparse = scipy.sparse.csc_matrix(label_r)
+    prediction_r_sparse = scipy.sparse.csc_matrix(prediction_r)
+
+    diff_r_sparse = label_r_sparse - prediction_r_sparse
+
+    AE_r_matrix = abs(diff_r_sparse)
+
+    MAE_r = scipy.sparse.csc_matrix.sum(AE_r_matrix) / scipy.sparse.csc_matrix.sum(
+        scipy.sparse.csc_matrix(label_first_feature))
+
+    return MAE_r
+
+
+def get_MAE_I_unet(batch_labels, batch_predictions):
+    import numpy as np
+    import scipy
+
+    label_first_feature = np.ndarray.flatten(batch_labels[:, :, :, 0])
+
+    label_I = np.ndarray.flatten(batch_labels[:, :, :, 4])
+    prediction_I = np.ndarray.flatten(batch_predictions[:, :, :, 4]) * label_first_feature
+
+    label_I_sparse = scipy.sparse.csc_matrix(label_I)
+    prediction_I_sparse = scipy.sparse.csc_matrix(prediction_I)
+
+    diff_I_sparse = label_I_sparse - prediction_I_sparse
+
+    AE_I_matrix = abs(diff_I_sparse)
+
+    MAE_I = scipy.sparse.csc_matrix.sum(AE_I_matrix) / scipy.sparse.csc_matrix.sum(
+        scipy.sparse.csc_matrix(label_first_feature))
+
+    return MAE_I
 
 
 def get_operating_characteristics_scanning_box(predicted_particle_positions_x, predicted_particle_positions_y,
