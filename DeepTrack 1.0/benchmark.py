@@ -711,7 +711,8 @@ def recursiveEquals(obj1, obj2):
     return True
 
 
-def deeptrack_single_particle_MAE_and_hits(deeptrack_network, batch_images, batch_particle_attributes, radius_cutoff):
+def deeptrack_single_particle_MAE_and_hits(deeptrack_network, batch_images, batch_particle_attributes, radius_cutoff,
+                                           image_half_size=25):
     import deeptrack
     from numpy import mean
     AEs = []
@@ -723,8 +724,8 @@ def deeptrack_single_particle_MAE_and_hits(deeptrack_network, batch_images, batc
 
         # If both prediction and particle
         if prediction_radius <= radius_cutoff and len(batch_particle_attributes[i][0]) > 0:
-            x_difference = particle_positions[0] + 25 - batch_particle_attributes[i][0]
-            y_difference = particle_positions[1] + 25 - batch_particle_attributes[i][1]
+            x_difference = particle_positions[0] + image_half_size - batch_particle_attributes[i][0]
+            y_difference = particle_positions[1] + image_half_size - batch_particle_attributes[i][1]
             AE = (float(x_difference) ** 2 + float(y_difference) ** 2) ** (1 / 2)
             particle_radius = float(batch_particle_attributes[i][2])
 
@@ -753,11 +754,13 @@ def unet_single_particle_MAE_and_hits(model, batch_images, batch_particle_attrib
                                                             apply_sigmoid=True)
     # batch = (batch_images, None, batch_predictions_after_cutoff, batch_particle_attributes)
 
-    for i in range(len(batch_particle_attributes)):
+    batch_size = len(batch_particle_attributes)
+
+    for i in range(batch_size):
         # print("\n")
         # imageGeneration.visualise_batch(batch, i, use_batch_particle_attributes=True)
         # imageGeneration.visualise_batch(batch, i)
-        particle_attributes = imageGeneration.get_particle_attributes(batch_predictions_after_cutoff[i])
+        predicted_particle_attributes = imageGeneration.get_particle_attributes(batch_predictions_after_cutoff[i])
         # print("Predicted X positions: " + str(particle_attributes[0]) +
         #       ". Predicted Y positions: " + str(particle_attributes[1]))
         # print("True X positions: " + str(batch_particle_attributes[i][0]) +
@@ -766,12 +769,16 @@ def unet_single_particle_MAE_and_hits(model, batch_images, batch_particle_attrib
         # print("PARTICLE ATTRIBUTES" + str(particle_attributes))
         # print("REAL PARTICLE ATTRIBUTES" + str(batch_particle_attributes[i]))
 
-        # If both predictions and particle
-        if len(particle_attributes[0]) > 0 and len(batch_particle_attributes[i][0]) > 0:
+        # If there is both a predicted particle and true particle
+        if len(predicted_particle_attributes[0]) > 0 and len(batch_particle_attributes[i][0]) > 0:
+            number_of_particles = len(predicted_particle_attributes[0])
             particle_radius = float(batch_particle_attributes[i][2])
-            for particle_number in range(len(particle_attributes[0])):
-                x_difference = float(particle_attributes[0][particle_number] - batch_particle_attributes[i][0])
-                y_difference = float(particle_attributes[1][particle_number] - batch_particle_attributes[i][1])
+
+            for particle_number in range(number_of_particles):
+                x_difference = float(
+                    predicted_particle_attributes[0][particle_number] - batch_particle_attributes[i][0])
+                y_difference = float(
+                    predicted_particle_attributes[1][particle_number] - batch_particle_attributes[i][1])
                 errors.append((x_difference ** 2 + y_difference ** 2) ** (1 / 2))
 
             # Loop over all predictions
@@ -795,7 +802,7 @@ def unet_single_particle_MAE_and_hits(model, batch_images, batch_particle_attrib
             # print("n_misses" + str(n_misses))
 
         # If neither particle nor prediction
-        elif len(particle_attributes[0]) == 0 and len(batch_particle_attributes[i][0]) == 0:
+        elif len(predicted_particle_attributes[0]) == 0 and len(batch_particle_attributes[i][0]) == 0:
             hits_sum += 1
 
     hit_percentage = hits_sum / len(batch_particle_attributes)
@@ -899,3 +906,68 @@ def get_optimal_parameters_unet(batch_predictions,
             print("On iteration: {}, Current_guess: {} , func_value: {}".format(k + 1, current_guess, func_value))
 
     return current_guess
+
+
+def get_optimal_parameters_DT_single_particle(predicted_positions,
+                                              batch_particle_attributes,
+                                              image_size_x, image_size_y,
+                                              sample_size=100,
+                                              number_of_iterations=2,
+                                              x0=10,
+                                              verbose=False,
+                                              FPR_weight=1):
+    import numpy as np
+    from scipy.optimize import minimize
+    from scipy.special import expit
+
+    sample_size = min([sample_size, predicted_positions.shape[0]])
+
+    label = batch_particle_attributes
+    pred = predicted_positions
+    current_guess = minimize(distance_upper_left_corner_ROC_predictions_and_label_DT_single_particle, x0,
+                             args=(label, pred, sample_size, image_size_x, image_size_y, FPR_weight), tol=1e-6,
+                             method='Nelder-Mead').x
+    if verbose:
+        func_value = distance_upper_left_corner_ROC_predictions_and_label_DT(current_guess, label, pred, sample_size,
+                                                                             image_size_x, image_size_y, FPR_weight)
+        print("On iteration: {}, Current_guess: {} , func_value: {}".format(0, current_guess, func_value))
+
+    for k in range(number_of_iterations):
+        temp = minimize(distance_upper_left_corner_ROC_predictions_and_label_DT, current_guess,
+                        args=(label, pred, sample_size, image_size_x, image_size_y, FPR_weight), tol=1e-6,
+                        method='Nelder-Mead').x
+        current_guess = temp
+        if verbose:
+            func_value = distance_upper_left_corner_ROC_predictions_and_label_DT(current_guess, label, pred,
+                                                                                 sample_size, image_size_x,
+                                                                                 image_size_y, FPR_weight)
+            print("On iteration: {}, Current_guess: {} , func_value: {}".format(k + 1, current_guess, func_value))
+
+    return current_guess
+
+def distance_upper_left_corner_ROC_predictions_and_label_DT_single_particle(params, label, pred, sample_size, image_size_x,
+                                                            image_size_y, FPR_weight=1):
+    sample_size = min([sample_size, pred.shape[0]])
+
+    predicted_positions_DT = get_predicted_positions_DT(params[0],
+                                                        params[1],
+                                                        sample_size,
+                                                        pred)
+
+    scanning_box_size_x = 8
+    scanning_box_size_y = 8
+    scanning_box_step_x = 2
+    scanning_box_step_y = 2
+
+    operating_characteristics = get_op_chars(predicted_positions_DT,
+                                             label,
+                                             image_size_x, image_size_y,
+                                             scanning_box_size_x, scanning_box_size_y,
+                                             scanning_box_step_x, scanning_box_step_y)
+
+    P, N, TP, FP, TN, FN = operating_characteristics
+
+    dist = distance_from_upper_left_corner_ROC(operating_characteristics, FPR_weight=FPR_weight)
+
+    return dist
+
