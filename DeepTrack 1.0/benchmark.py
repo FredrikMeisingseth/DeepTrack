@@ -513,13 +513,13 @@ def get_predicted_positions_DT(particle_radial_distance_threshold,
                                                       particle_radial_distance,
                                                       particle_maximum_interdistance)
 
-            for k in range(len(centroids_x)):
-                predicted_positions.append((i, centroids_x[k], centroids_y[k]))
+            for l in range(len(centroids_x)):
+                predicted_positions.append((i, centroids_x[l], centroids_y[l]))
 
     return predicted_positions
 
 
-def get_predicted_positions_unet(number_frames_to_be_tracked, batch_predictions, video_width, video_height,
+def get_predicted_positions_unet(number_frames_to_be_tracked, batch_predictions, image_width, image_height,
                                  cutoff_value=0.9):
     import imageGeneration as IG
     predicted_positions = []
@@ -533,7 +533,7 @@ def get_predicted_positions_unet(number_frames_to_be_tracked, batch_predictions,
             x_position = x_mean_list[j]
             y_position = y_mean_list[j]
             frame_index = i
-            if x_position <= video_width and y_position <= video_height:
+            if x_position <= image_width and y_position <= image_height:
                 predicted_positions.append((frame_index, x_position, y_position))
 
     return predicted_positions
@@ -907,6 +907,7 @@ def predict_batch_deeptrack(network, batch_images, box_half_size=16, box_scannin
 
     number_frames_to_be_tracked = batch_images.shape[0]
 
+    
     video_height = batch_images.shape[1]
     video_width = batch_images.shape[2]
 
