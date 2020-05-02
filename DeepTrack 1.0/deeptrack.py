@@ -594,7 +594,7 @@ def track_frame(
         frame,
         box_half_size=25,
         box_scanning_step=5,
-    ):
+):
     """Tracks a frame box by box.
 
     Inputs:
@@ -762,7 +762,7 @@ def plot_tracked_scanning_boxes(
         boxes_all,
         predicted_positions_wrt_box,
         box_half_size=25,
-    ):
+):
     """Plot tracked scanning boxes over a range of frames.
 
     Inputs:
@@ -817,7 +817,7 @@ def centroids(
         particle_positions_y,
         particle_radial_distance,
         particle_interdistance,
-    ):
+):
     """Calculate centroid of the particles by taking the mean x and y positions.
 
     Inputs:
@@ -869,13 +869,13 @@ def centroids(
     return (centroid_x, centroid_y)
 
 
-def show_tracked_frames(    
+def show_tracked_frames(
         particle_radial_distance_threshold,
         particle_maximum_interdistance,
         number_frames_to_be_shown,
         frames,
         predicted_positions_wrt_frame,
-    ):
+):
     """Show the frames with the predicted positions and centroid positions.
 
     Inputs:
@@ -1027,7 +1027,7 @@ def show_tracked_frames_single_particle(
         number_frames_to_be_shown,
         frames,
         predicted_positions,
-    ):
+):
     """Show the frames with the predicted position.
 
     Inputs:
@@ -1061,7 +1061,7 @@ def particle_positions(
         first_particle_range=0.5,
         other_particle_range=1,
         particle_distance=50,
-    ):
+):
     """Generates multiple particle x- and y-coordinates with respect to each other.
 
     Inputs:
@@ -1082,49 +1082,43 @@ def particle_positions(
     from itertools import combinations
     from numpy import linalg
 
-    if particle_number > 0:
-        ### Centermost particle
-        target_particle_center_x = uniform(-first_particle_range,
-                                           first_particle_range)
-        target_particle_center_y = uniform(-first_particle_range,
-                                           first_particle_range)
+    ### Centermost particle
+    target_particle_center_x = uniform(-first_particle_range,
+                                       first_particle_range)
+    target_particle_center_y = uniform(-first_particle_range,
+                                       first_particle_range)
 
-        target_center_distance = (target_particle_center_x ** 2
-                                  + target_particle_center_y ** 2) ** 0.5
+    target_center_distance = (target_particle_center_x ** 2
+                              + target_particle_center_y ** 2) ** 0.5
 
-        if particle_number > 1:
-            ### Other particles
-            while True:
-                particles_center_x = uniform(-other_particle_range,
-                                             other_particle_range, particle_number - 1)
+    ### Other particles
+    while True:
+        particles_center_x = uniform(-other_particle_range,
+                                     other_particle_range, particle_number - 1)
+        particles_center_y = uniform(-other_particle_range,
+                                     other_particle_range, particle_number - 1)
 
-                particles_center_y = uniform(-other_particle_range,
-                                             other_particle_range, particle_number - 1)
+        center_distance = (particles_center_x ** 2 + particles_center_y
+                           ** 2) ** 0.5
 
-                center_distance = (particles_center_x ** 2 + particles_center_y
-                                   ** 2) ** 0.5
-                ### Force all other particles to be further away from the center than the centermost particle
-                if any(t < target_center_distance for t in center_distance):
-                    continue
+        ### Force all other particles to be further away from the center than the centermost particle
+        if any(t < target_center_distance for t in center_distance):
+            continue
 
-                particles_center_x = insert(particles_center_x, 0,
-                                            target_particle_center_x)
-                particles_center_y = insert(particles_center_y, 0,
-                                            target_particle_center_y)
+        particles_center_x = insert(particles_center_x, 0,
+                                    target_particle_center_x)
+        particles_center_y = insert(particles_center_y, 0,
+                                    target_particle_center_y)
 
-                particle_centers = array([particles_center_x,
-                                          particles_center_y])
+        particle_centers = array([particles_center_x,
+                                  particles_center_y])
 
-                ### Force all particles to be a certain distance from each other
-                if all(linalg.norm(p - q) > particle_distance for (p, q) in
-                       combinations(particle_centers, 2)):
-                    break
+        ### Force all particles to be a certain distance from each other
+        if all(linalg.norm(p - q) > particle_distance for (p, q) in
+               combinations(particle_centers, 2)):
+            break
 
-            return particles_center_x, particles_center_y
-
-        return [target_particle_center_x], [target_particle_center_y]
-
-    return [], []
+    return (particles_center_x, particles_center_y)
 
 
 def load(saved_network_file_name):
